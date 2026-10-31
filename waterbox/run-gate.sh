@@ -143,11 +143,13 @@ else
 	fail "names: $(printf '%s' "$out" | grep -v 'bent or missing names in' | head -3 | tr '\n' ' ')"
 fi
 # Chimera's own checks of a core's texts: every key named, every name a key,
-# and Chimera's names unbent
+# and Chimera's names unbent. The texts check reads waterbox/, where this
+# core's code and tables are, and not the whole checkout: CI puts Chimera's
+# own checkout inside it, and Chimera's sources hold keys of their own.
 ct="$chimera_root/tools/check-core-texts.py"
 pn="$chimera_root/tools/check-proper-nouns.py"
 if [ -f "$ct" ] && [ -f "$pn" ]; then
-	if ct_out=$(python3 -I "$ct" "$root" 2>&1) && pn_out=$(python3 -I "$pn" "$here" 2>&1); then
+	if ct_out=$(python3 -I "$ct" "$here" 2>&1) && pn_out=$(python3 -I "$pn" "$here" 2>&1); then
 		pass "texts: $(printf '%s' "$ct_out" | tail -1); Chimera's names unbent"
 	else
 		fail "texts: $(printf '%s %s' "${ct_out:-}" "${pn_out:-}" | head -3 | tr '\n' ' ')"
