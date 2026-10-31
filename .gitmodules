@@ -1,0 +1,3 @@
+[submodule "extern/eden"]
+	path = extern/eden
+	url = https://github.com/eden-emulator/mirror

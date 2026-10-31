@@ -1,0 +1,81 @@
+{
+  "_comment": [
+    "Player 1 on the keyboard and the first pad: the face buttons where a Nintendo pad has them (A right,",
+    "B bottom), the D-pad on the arrows, both sticks on the pad's sticks, and the touch screen under the mouse:",
+    "its left button touches where the pointer is on the picture. Player 2 is left unbound."
+  ],
+  "AllTrollers": {
+    "Nintendo Switch": {
+      "P1 Up": "Up, J1 POV0U, X1 DpadUp",
+      "P1 Down": "Down, J1 POV0D, X1 DpadDown",
+      "P1 Left": "Left, J1 POV0L, X1 DpadLeft",
+      "P1 Right": "Right, J1 POV0R, X1 DpadRight",
+      "P1 A": "X, J1 B3, X1 B",
+      "P1 B": "Z, J1 B2, X1 A",
+      "P1 X": "S, J1 B4, X1 Y",
+      "P1 Y": "A, J1 B1, X1 X",
+      "P1 L": "Q, J1 B5, X1 LeftShoulder",
+      "P1 R": "W, J1 B6, X1 RightShoulder",
+      "P1 ZL": "E, J1 B7, X1 LeftTrigger",
+      "P1 ZR": "R, J1 B8, X1 RightTrigger",
+      "P1 Plus": "Enter, J1 B10, X1 Start",
+      "P1 Minus": "Backspace, J1 B9, X1 Back",
+      "P1 L Stick": "J1 B11, X1 LeftThumb",
+      "P1 R Stick": "J1 B12, X1 RightThumb",
+      "P2 Up": "",
+      "P2 Down": "",
+      "P2 Left": "",
+      "P2 Right": "",
+      "P2 A": "",
+      "P2 B": "",
+      "P2 X": "",
+      "P2 Y": "",
+      "P2 L": "",
+      "P2 R": "",
+      "P2 ZL": "",
+      "P2 ZR": "",
+      "P2 Plus": "",
+      "P2 Minus": "",
+      "P2 L Stick": "",
+      "P2 R Stick": "",
+      "Touch": "WMouse L"
+    }
+  },
+  "AllTrollersAutoFire": {
+    "Nintendo Switch": {}
+  },
+  "AllTrollersAnalog": {
+    "Nintendo Switch": {
+      "P1 Left Stick X": {
+        "Value": "X1 LeftThumbX Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.1
+      },
+      "P1 Left Stick Y": {
+        "Value": "X1 LeftThumbY Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.1
+      },
+      "P1 Right Stick X": {
+        "Value": "X1 RightThumbX Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.1
+      },
+      "P1 Right Stick Y": {
+        "Value": "X1 RightThumbY Axis",
+        "Mult": 1.0,
+        "Deadzone": 0.1
+      },
+      "Touch X": {
+        "Value": "WMouse X",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      },
+      "Touch Y": {
+        "Value": "WMouse Y",
+        "Mult": 1.0,
+        "Deadzone": 0.0
+      }
+    }
+  }
+}

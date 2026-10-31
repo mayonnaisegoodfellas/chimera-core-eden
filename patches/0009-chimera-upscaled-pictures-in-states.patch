@@ -1,0 +1,544 @@
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.h b/src/video_core/renderer_opengl/gl_rasterizer.h
+--- a/src/video_core/renderer_opengl/gl_rasterizer.h
++++ b/src/video_core/renderer_opengl/gl_rasterizer.h
+@@ -147,6 +147,13 @@
+                                                             VAddr framebuffer_addr,
+                                                             u32 pixel_stride);
+ 
++#ifdef CHIMERA
++    /// the texture cache, for the core's savestates (chimera_kept.h)
++    TextureCache& ChimeraTextureCache() {
++        return texture_cache;
++    }
++#endif
++
+ private:
+     static constexpr size_t MAX_TEXTURES = 192;
+     static constexpr size_t MAX_IMAGES = 48;
+diff --git a/src/video_core/renderer_opengl/gl_texture_cache.cpp b/src/video_core/renderer_opengl/gl_texture_cache.cpp
+--- a/src/video_core/renderer_opengl/gl_texture_cache.cpp
++++ b/src/video_core/renderer_opengl/gl_texture_cache.cpp
+@@ -1050,6 +1050,11 @@
+         }
+     }
+     current_texture = dst_handle;
++#ifdef CHIMERA
++    if (up_scale) {
++        chimera_scaled_writes++;
++    }
++#endif
+     auto& state_tracker = runtime->GetStateTracker();
+     state_tracker.NotifyViewport0();
+     state_tracker.NotifyScissor0();
+@@ -1059,6 +1064,86 @@
+     return True(flags & ImageFlagBits::Rescaled);
+ }
+ 
++#ifdef CHIMERA
++u32 Image::ChimeraScaledWidth(u32 level) const {
++    return (std::max)(1u, runtime->resolution.ScaleUp(info.size.width) >> level);
++}
++
++u32 Image::ChimeraScaledHeight(u32 level) const {
++    const u32 height = info.type == ImageType::e2D ? runtime->resolution.ScaleUp(info.size.height)
++                                                   : info.size.height;
++    return (std::max)(1u, height >> level);
++}
++
++u32 Image::ChimeraBytesPerPixel() const {
++    // a multisampled texture cannot be read into memory, and a converted one
++    // is not in the format its name says
++    if (info.type != ImageType::e2D || info.num_samples != 1 || gl_format == GL_NONE ||
++        gl_type == GL_NONE || upscaled_backup.handle == 0 ||
++        True(flags & ImageFlagBits::Converted)) {
++        return 0;
++    }
++    return VideoCore::Surface::BytesPerBlock(info.format);
++}
++
++namespace {
++// The pixel transfer state a client-memory read or write needs (no buffer
++// bound, rows tightly packed), and the renderer's own put back after it.
++struct ChimeraPixelStore {
++    explicit ChimeraPixelStore(bool pack_) : pack{pack_} {
++        glGetIntegerv(pack ? GL_PIXEL_PACK_BUFFER_BINDING : GL_PIXEL_UNPACK_BUFFER_BINDING, &buffer);
++        for (size_t i = 0; i < names.size(); i++) {
++            glGetIntegerv(Name(i), &values[i]);
++        }
++        glBindBuffer(pack ? GL_PIXEL_PACK_BUFFER : GL_PIXEL_UNPACK_BUFFER, 0);
++        for (size_t i = 0; i < names.size(); i++) {
++            glPixelStorei(Name(i), i == 0 ? 1 : 0);
++        }
++    }
++    ~ChimeraPixelStore() {
++        for (size_t i = 0; i < names.size(); i++) {
++            glPixelStorei(Name(i), values[i]);
++        }
++        glBindBuffer(pack ? GL_PIXEL_PACK_BUFFER : GL_PIXEL_UNPACK_BUFFER, static_cast<GLuint>(buffer));
++    }
++    GLenum Name(size_t i) const {
++        return pack ? pack_names[i] : names[i];
++    }
++    static constexpr std::array<GLenum, 6> names{GL_UNPACK_ALIGNMENT,   GL_UNPACK_ROW_LENGTH,
++                                                 GL_UNPACK_IMAGE_HEIGHT, GL_UNPACK_SKIP_ROWS,
++                                                 GL_UNPACK_SKIP_PIXELS,  GL_UNPACK_SKIP_IMAGES};
++    static constexpr std::array<GLenum, 6> pack_names{GL_PACK_ALIGNMENT,   GL_PACK_ROW_LENGTH,
++                                                      GL_PACK_IMAGE_HEIGHT, GL_PACK_SKIP_ROWS,
++                                                      GL_PACK_SKIP_PIXELS,  GL_PACK_SKIP_IMAGES};
++    bool pack;
++    GLint buffer = 0;
++    std::array<GLint, 6> values{};
++};
++} // namespace
++
++void Image::ChimeraReadScaled(u32 level, u32 layer, u32 y, u32 rows, u8* out, size_t out_bytes) {
++    ChimeraPixelStore store{true};
++    glGetTextureSubImage(upscaled_backup.handle, static_cast<GLint>(level), 0, static_cast<GLint>(y),
++                         static_cast<GLint>(layer), static_cast<GLsizei>(ChimeraScaledWidth(level)),
++                         static_cast<GLsizei>(rows), 1, gl_format, gl_type,
++                         static_cast<GLsizei>(out_bytes), out);
++}
++
++void Image::ChimeraWriteScaled(const u8* pixels) {
++    ChimeraPixelStore store{false};
++    const u32 bpp = ChimeraBytesPerPixel();
++    for (s32 level = 0; level < info.resources.levels; level++) {
++        const u32 w = ChimeraScaledWidth(static_cast<u32>(level));
++        const u32 h = ChimeraScaledHeight(static_cast<u32>(level));
++        for (s32 layer = 0; layer < info.resources.layers; layer++) {
++            glTextureSubImage3D(upscaled_backup.handle, level, 0, 0, layer, static_cast<GLsizei>(w),
++                                static_cast<GLsizei>(h), 1, gl_format, gl_type, pixels);
++            pixels += static_cast<size_t>(w) * h * bpp;
++        }
++    }
++}
++#endif
++
+ bool Image::ScaleUp(bool ignore) {
+     const auto& resolution = runtime->resolution;
+     if (!resolution.active) {
+diff --git a/src/video_core/renderer_opengl/gl_texture_cache.h b/src/video_core/renderer_opengl/gl_texture_cache.h
+--- a/src/video_core/renderer_opengl/gl_texture_cache.h
++++ b/src/video_core/renderer_opengl/gl_texture_cache.h
+@@ -229,6 +229,18 @@
+ 
+     bool ScaleDown(bool ignore = false);
+ 
++#ifdef CHIMERA
++    // The larger texture (above 1x), read before a savestate and written back
++    // after a load (texture_cache/chimera_kept.h): a level's size, a pixel's
++    // bytes (0: this image's cannot be read), rows of a level and layer read
++    // tightly packed, and every level and layer written in that layout.
++    u32 ChimeraScaledWidth(u32 level) const;
++    u32 ChimeraScaledHeight(u32 level) const;
++    u32 ChimeraBytesPerPixel() const;
++    void ChimeraReadScaled(u32 level, u32 layer, u32 y, u32 rows, u8* out, size_t out_bytes);
++    void ChimeraWriteScaled(const u8* pixels);
++#endif
++
+     u64 allocation_tick;
+ 
+ private:
+diff --git a/src/video_core/texture_cache/chimera_kept.h b/src/video_core/texture_cache/chimera_kept.h
+new file mode 100644
+--- /dev/null
++++ b/src/video_core/texture_cache/chimera_kept.h
+@@ -0,0 +1,104 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++
++// Chimera: the pictures the renderer draws above the console's resolution,
++// kept where a savestate holds them.
++//
++// Above 1x an image the GPU draws into is a texture of the larger size on the
++// host's card, and the console's memory only gets it scaled down. A renderer
++// made again after a load (a new GL context) would make its images again from
++// that memory as the game uses them: other pixels than the ones it had, not
++// upscaled yet (the cache upscales a render target after it has been one for
++// two frames), and absent when the screen is shown before the game draws
++// again (the picture then comes from the console's memory at 1x). Before a
++// state is taken the core asks the cache for every image whose scaling a load
++// would lose (`Keep`) and copies them into its own memory; right after a
++// renderer is made again the cache makes the same images again, in the same
++// order, with what it knew of them and the larger texture's pixels
++// (`Restore`). The storage is the core's (waterbox/driver/kept_images.cpp).
++#pragma once
++
++#include <cstddef>
++#include <cstring>
++
++#include "common/common_types.h"
++#include "video_core/texture_cache/image_info.h"
++
++namespace VideoCommon::ChimeraKept {
++
++// One image as the cache had it when the state was taken.
++struct Record {
++    ImageInfo info;
++    u64 gpu_addr;
++    u64 cpu_addr;
++    u64 channel;
++    // a digest of the image's bytes in the console's memory
++    u64 guest_hash;
++    // the cache's record of changes to the larger texture: the GPU drew into
++    // it (modification tick), or it was made from the smaller one again
++    u64 modification_tick;
++    u64 scaled_writes;
++    u64 scale_tick;
++    u32 scale_rating;
++    // upscaled: the larger texture is the image
++    u32 rescaled;
++    // drawn into since it was last written to the console's memory
++    u32 gpu_modified;
++    // had views (the screen is shown only from an image that has one)
++    u32 had_views;
++};
++
++// One image found by Keep: its record, and how to read its larger texture.
++struct Found {
++    Record record;
++    // the larger texture's size in bytes (every level and layer, rows tightly
++    // packed); 0 when it is not upscaled or cannot be read (multisampled,
++    // three-dimensional)
++    u64 bytes;
++    void* image;
++    // reads rows [y, y + rows) of a level and layer of the larger texture
++    void (*read)(void* image, u32 level, u32 layer, u32 y, u32 rows, u8* out, size_t out_bytes);
++    // a level's size in the larger texture, and the bytes of one pixel
++    u32 (*width)(void* image, u32 level);
++    u32 (*height)(void* image, u32 level);
++    u32 bytes_per_pixel;
++    u32 reserved;
++};
++
++struct Hooks {
++    // Keep fills `found` (room for `most`) and hands them over in one call,
++    // with the cache's two counters
++    Found* found = nullptr;
++    size_t most = 0;
++    void (*keep)(const Found* found, size_t count, size_t left_out, u64 frame_tick,
++                 u64 modification_tick) = nullptr;
++    // After a renderer is made again: whether the last state kept images of
++    // an earlier renderer, how many, and the cache's counters then; and each
++    // of them in the order they were kept, with its larger texture's pixels
++    // (null when none were kept)
++    bool (*kept)(size_t* count, u64* frame_tick, u64* modification_tick) = nullptr;
++    const Record* (*record)(size_t i, const u8** pixels, u64* bytes) = nullptr;
++    // a scratch buffer for reading the console's memory (no allocation while
++    // a state is taken)
++    u8* scratch = nullptr;
++    size_t scratch_bytes = 0;
++};
++
++inline Hooks hooks;
++
++// a digest of `n` bytes, continued from `h` (0 to start; every piece but the
++// last a multiple of 8 bytes)
++inline u64 Digest(u64 h, const u8* p, size_t n) {
++    size_t i = 0;
++    for (; i + 8 <= n; i += 8) {
++        u64 w;
++        std::memcpy(&w, p + i, 8);
++        h = (h ^ w) * 0x9E3779B97F4A7C15ULL;
++        h ^= h >> 29;
++    }
++    for (; i < n; i++) {
++        h = (h ^ p[i]) * 0x100000001B3ULL;
++    }
++    return h;
++}
++
++} // namespace VideoCommon::ChimeraKept
+diff --git a/src/video_core/texture_cache/image_base.h b/src/video_core/texture_cache/image_base.h
+--- a/src/video_core/texture_cache/image_base.h
++++ b/src/video_core/texture_cache/image_base.h
+@@ -106,6 +106,11 @@
+ 
+     u64 modification_tick = 0;
+     size_t lru_index = SIZE_MAX;
++#ifdef CHIMERA
++    // times the larger texture was made again from the smaller one (above
++    // 1x), which changes it with no modification tick (chimera_kept.h)
++    u64 chimera_scaled_writes = 0;
++#endif
+ 
+     std::array<u32, MAX_MIP_LEVELS> mip_level_offsets{};
+ 
+diff --git a/src/video_core/texture_cache/texture_cache.h b/src/video_core/texture_cache/texture_cache.h
+--- a/src/video_core/texture_cache/texture_cache.h
++++ b/src/video_core/texture_cache/texture_cache.h
+@@ -1561,9 +1561,170 @@
+         it->second = slot_image_allocs.insert();
+     }
+     slot_image_allocs[it->second].images.push_back(image_id);
++#ifdef CHIMERA
++    // the channel whose address space it is in (Eden leaves the field unset):
++    // a state's images are made again in theirs
++    slot_images[image_id].channel = ChimeraBindId(current_channel_id);
++#endif
+     return image_id;
+ }
+ 
++#ifdef CHIMERA
++template <class P>
++size_t TextureCache<P>::ChimeraBindId(size_t index) const {
++    for (const auto& [bind_id, at] : channel_map) {
++        if (at == index) {
++            return static_cast<size_t>(bind_id);
++        }
++    }
++    return UNSET_CHANNEL;
++}
++
++template <class P>
++u64 TextureCache<P>::ChimeraGuestHash(const ImageBase& image) {
++    auto& h = ChimeraKept::hooks;
++    // an image at no address of the console's (a fake one past its memory)
++    // has no bytes there
++    constexpr u64 end = 1ULL << Tegra::MaxwellDeviceMemoryManager::AS_BITS;
++    if (image.cpu_addr == 0 || image.cpu_addr >= end || image.guest_size_bytes > end - image.cpu_addr ||
++        h.scratch == nullptr || h.scratch_bytes < 8) {
++        return 0;
++    }
++    const size_t piece = h.scratch_bytes & ~size_t{7};
++    u64 hash = 0;
++    for (u64 at = 0; at < image.guest_size_bytes; at += piece) {
++        const size_t n = (std::min<u64>)(piece, image.guest_size_bytes - at);
++        device_memory.ReadBlockUnsafe(image.cpu_addr + at, h.scratch, n);
++        hash = ChimeraKept::Digest(hash, h.scratch, n);
++    }
++    return hash;
++}
++
++template <class P>
++void TextureCache<P>::ChimeraKeep() {
++    auto& h = ChimeraKept::hooks;
++    if (!h.keep || !h.found || !Settings::values.resolution_info.active) {
++        return;
++    }
++    // in the order the cache holds them, which is the order they are made
++    // again in after a load
++    size_t count = 0, left_out = 0;
++    for (auto [id, image] : slot_images) {
++        if (False(image->flags & ImageFlagBits::Registered)) {
++            continue;
++        }
++        const bool rescaled = True(image->flags & ImageFlagBits::Rescaled);
++        if (!rescaled && image->scale_rating == 0) {
++            continue;
++        }
++        if (count == h.most) {
++            left_out++;
++            continue;
++        }
++        ChimeraKept::Found& f = h.found[count++];
++        f = {};
++        ChimeraKept::Record& r = f.record;
++        r.info = image->info;
++        r.gpu_addr = image->gpu_addr;
++        r.cpu_addr = image->cpu_addr;
++        r.channel = image->channel;
++        r.guest_hash = ChimeraGuestHash(*image);
++        r.modification_tick = image->modification_tick;
++        r.scaled_writes = image->chimera_scaled_writes;
++        r.scale_tick = image->scale_tick;
++        r.scale_rating = image->scale_rating;
++        r.rescaled = rescaled ? 1 : 0;
++        r.gpu_modified = True(image->flags & ImageFlagBits::GpuModified) ? 1 : 0;
++        r.had_views = image->image_view_ids.empty() ? 0 : 1;
++        if constexpr (requires(Image& i) { i.ChimeraBytesPerPixel(); }) {
++            const u32 bpp = rescaled ? image->ChimeraBytesPerPixel() : 0;
++            if (bpp != 0) {
++                u64 bytes = 0;
++                for (s32 level = 0; level < image->info.resources.levels; level++) {
++                    bytes += u64{image->ChimeraScaledWidth(static_cast<u32>(level))} *
++                             image->ChimeraScaledHeight(static_cast<u32>(level)) * bpp *
++                             static_cast<u32>(image->info.resources.layers);
++                }
++                f.bytes = bytes;
++                f.bytes_per_pixel = bpp;
++                f.image = image;
++                f.read = [](void* self, u32 level, u32 layer, u32 y, u32 rows, u8* out, size_t out_bytes) {
++                    static_cast<Image*>(self)->ChimeraReadScaled(level, layer, y, rows, out, out_bytes);
++                };
++                f.width = [](void* self, u32 level) {
++                    return static_cast<Image*>(self)->ChimeraScaledWidth(level);
++                };
++                f.height = [](void* self, u32 level) {
++                    return static_cast<Image*>(self)->ChimeraScaledHeight(level);
++                };
++            }
++        }
++    }
++    h.keep(h.found, count, left_out, frame_tick, modification_tick);
++}
++
++template <class P>
++void TextureCache<P>::ChimeraRestore() {
++    auto& h = ChimeraKept::hooks;
++    size_t count = 0;
++    u64 kept_frame_tick = 0, kept_modification_tick = 0;
++    if (!h.kept || !h.record || !Settings::values.resolution_info.active ||
++        !h.kept(&count, &kept_frame_tick, &kept_modification_tick)) {
++        return;
++    }
++    // This cache stands where the one the state was taken from stood: its
++    // counters go on from there, and its images are made again in the order
++    // that one held them, each as it was.
++    frame_tick = kept_frame_tick;
++    modification_tick = kept_modification_tick;
++    const size_t channel_before = ChimeraBindId(current_channel_id);
++    for (size_t i = 0; i < count; i++) {
++        const u8* pixels = nullptr;
++        u64 bytes = 0;
++        const ChimeraKept::Record& r = *h.record(i, &pixels, &bytes);
++        if (r.channel == UNSET_CHANNEL || !channel_map.contains(static_cast<s32>(r.channel))) {
++            continue;
++        }
++        if (ChimeraBindId(current_channel_id) != r.channel) {
++            BindToChannel(static_cast<s32>(r.channel));
++        }
++        const ImageId image_id = InsertImage(r.info, r.gpu_addr, RelaxedOptions{});
++        Image& image = slot_images[image_id];
++        // (joined into a larger image, or the console's memory is no longer
++        // what it was: the cache makes it from that memory, as at 1x)
++        if (image.gpu_addr != r.gpu_addr || image.cpu_addr != r.cpu_addr ||
++            image.info.format != r.info.format || image.info.size != r.info.size ||
++            ChimeraGuestHash(image) != r.guest_hash) {
++            continue;
++        }
++        image.scale_rating = r.scale_rating;
++        image.scale_tick = r.scale_tick;
++        if (r.rescaled && ImageCanRescale(image)) {
++            RefreshContents(image, image_id);
++            ScaleUp(image);
++            if constexpr (requires(Image& i) { i.ChimeraWriteScaled(pixels); }) {
++                if (pixels != nullptr && bytes != 0 && True(image.flags & ImageFlagBits::Rescaled)) {
++                    image.ChimeraWriteScaled(pixels);
++                }
++            }
++        }
++        image.modification_tick = r.modification_tick;
++        image.chimera_scaled_writes = r.scaled_writes;
++        if (r.gpu_modified) {
++            image.flags |= ImageFlagBits::GpuModified;
++        }
++        // the screen is shown from an image only once it has a view: one that
++        // had views gets its plain one, as the screen's lookup would make it
++        if (r.had_views && image.image_view_ids.empty()) {
++            (void)FindOrEmplaceImageView(image_id, ImageViewInfo{ImageViewType::e2D, image.info.format});
++        }
++    }
++    if (channel_before != UNSET_CHANNEL && ChimeraBindId(current_channel_id) != channel_before) {
++        BindToChannel(static_cast<s32>(channel_before));
++    }
++}
++#endif
++
+ template <class P>
+ ImageId TextureCache<P>::JoinImages(const ImageInfo& info, GPUVAddr gpu_addr, DAddr cpu_addr) {
+     ImageInfo new_info = info;
+diff --git a/src/video_core/texture_cache/texture_cache_base.h b/src/video_core/texture_cache/texture_cache_base.h
+--- a/src/video_core/texture_cache/texture_cache_base.h
++++ b/src/video_core/texture_cache/texture_cache_base.h
+@@ -35,6 +35,9 @@
+ #include "video_core/engines/fermi_2d.h"
+ #include "video_core/surface.h"
+ #include "video_core/texture_cache/descriptor_table.h"
++#ifdef CHIMERA
++#include "video_core/texture_cache/chimera_kept.h"
++#endif
+ #include "video_core/texture_cache/image_base.h"
+ #include "video_core/texture_cache/image_info.h"
+ #include "video_core/texture_cache/image_view_base.h"
+@@ -258,9 +261,23 @@
+     /// Prepare an image to be used
+     void PrepareImage(ImageId image_id, bool is_modification, bool invalidate);
+ 
++#ifdef CHIMERA
++    /// Chimera: every image whose scaling a load would lose, handed to the
++    /// core before a savestate (chimera_kept.h). Between frames only.
++    void ChimeraKeep();
++    /// Chimera: in a cache made after a load, the images the state kept,
++    /// made again as they were. Before the first frame it draws.
++    void ChimeraRestore();
++#endif
++
+     std::recursive_mutex mutex;
+ 
+ private:
++#ifdef CHIMERA
++    [[nodiscard]] u64 ChimeraGuestHash(const ImageBase& image);
++    /// the GPU's id of the channel stored at `index` (UNSET_CHANNEL: none)
++    [[nodiscard]] size_t ChimeraBindId(size_t index) const;
++#endif
+     /// Iterate over all page indices in a range
+     template <typename Func>
+     static void ForEachCPUPage(DAddr addr, size_t size, Func&& func) {
+diff --git a/src/video_core/video_core.cpp b/src/video_core/video_core.cpp
+--- a/src/video_core/video_core.cpp
++++ b/src/video_core/video_core.cpp
+@@ -67,6 +67,20 @@
+ }
+ 
+ #ifdef CHIMERA
++#ifdef HAS_OPENGL
++namespace {
++// the OpenGL renderer's rasterizer, or null (no RTTI: it is OpenGL's when the
++// setting says so)
++OpenGL::RasterizerOpenGL* ChimeraOpenGLRasterizer(Core::System& system) {
++    const auto backend = Settings::values.renderer_backend.GetValue();
++    if (backend == Settings::RendererBackend::Vulkan || backend == Settings::RendererBackend::Null) {
++        return nullptr;
++    }
++    return static_cast<OpenGL::RasterizerOpenGL*>(system.GPU().Renderer().ReadRasterizer());
++}
++} // namespace
++#endif
++
+ void ChimeraRebuildRenderer(Core::System& system, Core::Frontend::EmuWindow& emu_window, void (*between)()) {
+     Tegra::GPU& gpu = system.GPU();
+ #ifdef HAS_OPENGL
+@@ -80,6 +94,22 @@
+         between();
+     }
+     gpu.ChimeraAdoptRenderer(CreateRenderer(system, emu_window, gpu, emu_window.CreateSharedContext()));
++#ifdef HAS_OPENGL
++    // above 1x the images a state kept are made again before anything draws
++    if (auto* const rasterizer = ChimeraOpenGLRasterizer(system)) {
++        std::scoped_lock lock{rasterizer->ChimeraTextureCache().mutex};
++        rasterizer->ChimeraTextureCache().ChimeraRestore();
++    }
++#endif
++}
++
++void ChimeraKeepScaled(Core::System& system) {
++#ifdef HAS_OPENGL
++    if (auto* const rasterizer = ChimeraOpenGLRasterizer(system)) {
++        std::scoped_lock lock{rasterizer->ChimeraTextureCache().mutex};
++        rasterizer->ChimeraTextureCache().ChimeraKeep();
++    }
++#endif
+ }
+ #endif
+ 
+diff --git a/src/video_core/video_core.h b/src/video_core/video_core.h
+--- a/src/video_core/video_core.h
++++ b/src/video_core/video_core.h
+@@ -30,8 +30,16 @@
+ /// Chimera: the GL context the renderer's objects were made in is gone (a
+ /// savestate was loaded): the renderer is dropped - `between` runs when it
+ /// is gone and before the new one exists, for the frontend's own objects -
+-/// and made again. Called on the thread that holds the context.
++/// and made again, with the images the state kept above 1x
++/// (texture_cache/chimera_kept.h). Called on the thread that holds the
++/// context.
+ void ChimeraRebuildRenderer(Core::System& system, Core::Frontend::EmuWindow& emu_window, void (*between)());
++
++/// Chimera: before a savestate, the images drawn above the console's
++/// resolution go to the core (texture_cache/chimera_kept.h). On the thread
++/// that holds the context, between frames; nothing below 1x or without the
++/// OpenGL renderer.
++void ChimeraKeepScaled(Core::System& system);
+ #endif
+ 
+ } // namespace VideoCore

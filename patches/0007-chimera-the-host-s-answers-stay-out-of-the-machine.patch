@@ -1,0 +1,79 @@
+diff --git a/src/core/hle/service/acc/profile_manager.cpp b/src/core/hle/service/acc/profile_manager.cpp
+--- a/src/core/hle/service/acc/profile_manager.cpp
++++ b/src/core/hle/service/acc/profile_manager.cpp
+@@ -55,7 +55,14 @@
+ 
+     // Create an user if none are present
+     if (user_count == 0) {
++#ifdef CHIMERA
++        // Chimera: the one user every machine has. A random one would put
++        // each project's save data under another name, and saves are moved
++        // between projects.
++        CreateNewUser(UUID::MakeDefault(), "Eden");
++#else
+         CreateNewUser(UUID::MakeRandom(), "Eden");
++#endif
+         WriteUserSaveFile();
+     }
+ 
+diff --git a/src/core/hle/service/cmif_serialization.h b/src/core/hle/service/cmif_serialization.h
+--- a/src/core/hle/service/cmif_serialization.h
++++ b/src/core/hle/service/cmif_serialization.h
+@@ -349,6 +349,15 @@
+             } else {
+                 buffer.resize_destructive(0);
+             }
++#ifdef CHIMERA
++            // Chimera: the whole buffer is written to the game's memory after
++            // the call, and a service fills only its answer: the rest was
++            // whatever the host's heap held (its pointers among it), another
++            // machine in every process.
++            if (buffer.size() != 0) {
++                std::memset(buffer.data(), 0, buffer.size());
++            }
++#endif
+ 
+             ElementType* ptr = (ElementType*) buffer.data();
+             size_t size = buffer.size() / sizeof(ElementType);
+diff --git a/src/video_core/renderer_opengl/gl_query_cache.cpp b/src/video_core/renderer_opengl/gl_query_cache.cpp
+--- a/src/video_core/renderer_opengl/gl_query_cache.cpp
++++ b/src/video_core/renderer_opengl/gl_query_cache.cpp
+@@ -38,7 +38,10 @@
+ QueryCache::QueryCache(RasterizerOpenGL& rasterizer_,
+                        Tegra::MaxwellDeviceMemoryManager& device_memory_)
+     : QueryCacheLegacy(rasterizer_, device_memory_), gl_rasterizer{rasterizer_} {
++#ifndef CHIMERA
++    // (Chimera: no host counter runs - see RasterizerOpenGL::Query)
+     EnableCounters();
++#endif
+ }
+ 
+ QueryCache::~QueryCache() = default;
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.cpp b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+--- a/src/video_core/renderer_opengl/gl_rasterizer.cpp
++++ b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+@@ -485,6 +485,9 @@
+ }
+ 
+ void RasterizerOpenGL::ResetCounter(VideoCommon::QueryType type) {
++#ifdef CHIMERA
++    return;
++#endif
+     const auto query_cache_type = MaxwellToVideoCoreQuery(type);
+     if (!query_cache_type.has_value()) {
+         UNIMPLEMENTED_IF_MSG(type != VideoCommon::QueryType::Payload, "Reset query type: {}", type);
+@@ -495,6 +498,14 @@
+ 
+ void RasterizerOpenGL::Query(GPUVAddr gpu_addr, VideoCommon::QueryType type,
+                              VideoCommon::QueryPropertiesFlags flags, u32 payload, u32 subreport) {
++#ifdef CHIMERA
++    // What a counter read (the samples a draw passed, the primitives it
++    // made) is the host GPU's answer: it differs between GPUs and drivers,
++    // it is lost with the renderer at a state load, and the game reads it
++    // from its own memory. So every counter answers 1, the answer upstream
++    // gives for the counters it does not have: "something was drawn".
++    return QueryFallback(gpu_addr, type, flags, payload, subreport);
++#endif
+     const auto query_cache_type = MaxwellToVideoCoreQuery(type);
+     if (!query_cache_type.has_value()) {
+         return QueryFallback(gpu_addr, type, flags, payload, subreport);

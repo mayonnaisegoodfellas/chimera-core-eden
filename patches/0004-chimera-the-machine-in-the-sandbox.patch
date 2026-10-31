@@ -1,0 +1,395 @@
+diff --git a/CMakeModules/find/Findzstd.cmake b/CMakeModules/find/Findzstd.cmake
+--- a/CMakeModules/find/Findzstd.cmake
++++ b/CMakeModules/find/Findzstd.cmake
+@@ -27,6 +27,12 @@
+     endif()
+ endif()
+ 
++# (Chimera: where no zstd is installed - the guest build's empty sysroot -
++# there is no target to ask, and CPM builds the bundled one next)
++if (NOT TARGET zstd::zstd)
++    return()
++endif()
++
+ get_target_property(ZSTD_TARGET zstd::zstd ALIASED_TARGET)
+ 
+ if (NOT TARGET zstd::libzstd)
+diff --git a/src/common/cpu_features.cpp b/src/common/cpu_features.cpp
+--- a/src/common/cpu_features.cpp
++++ b/src/common/cpu_features.cpp
+@@ -205,7 +205,9 @@
+ 
+     if (max_ex_fn >= 0x80000007) {
+         __cpuid(cpu_id, 0x80000007);
++#ifndef CHIMERA
+         caps.invariant_tsc = Common::Bit<8>(cpu_id[3]);
++#endif
+     }
+ 
+     if (max_std_fn >= 0x15) {
+@@ -217,12 +219,19 @@
+         // The CPU model can be detected to use the values from turbostat
+         // https://github.com/torvalds/linux/blob/master/tools/power/x86/turbostat/turbostat.c#L5569
+         // but it's easier to just estimate the TSC tick rate for these cases.
++#ifdef CHIMERA
++        // Chimera: the host's timestamp counter is no clock of the machine's
++        // (time is CoreTiming's ticks), and measuring it against a host
++        // clock that does not move - the sandbox's - divides by zero.
++        caps.tsc_frequency = 0;
++#else
+         if (caps.tsc_crystal_ratio_denominator) {
+             caps.tsc_frequency = u64(caps.crystal_frequency)
+                 * caps.tsc_crystal_ratio_numerator / caps.tsc_crystal_ratio_denominator;
+         } else {
+             caps.tsc_frequency = X64::EstimateRDTSCFrequency();
+         }
++#endif
+     }
+ 
+     if (max_std_fn >= 0x16) {
+diff --git a/src/common/fiber.cpp b/src/common/fiber.cpp
+--- a/src/common/fiber.cpp
++++ b/src/common/fiber.cpp
+@@ -11,6 +11,9 @@
+ #include "common/fiber.h"
+ 
+ #include <boost/context/detail/fcontext.hpp>
++#ifdef CHIMERA
++#include <sys/mman.h>
++#endif
+ 
+ namespace Common {
+ 
+@@ -25,8 +28,34 @@
+     FiberImpl() {}
+ 
+     u32 canary_1 = CANARY_VALUE;
++#ifdef CHIMERA
++    // Chimera: each stack is a mapping of its own, asked for as a stack - a
++    // sandbox on Windows must know a stack to deliver a fault on it - and
++    // untouched until used. Arrays are zeroed when the fiber is made: 4 MiB
++    // of written pages a guest thread, in every savestate.
++    struct MappedStack {
++        u8* memory;
++        MappedStack()
++            : memory{static_cast<u8*>(mmap(nullptr, DEFAULT_STACK_SIZE, PROT_READ | PROT_WRITE,
++                                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0))} {
++            ASSERT(memory != MAP_FAILED);
++        }
++        ~MappedStack() {
++            munmap(memory, DEFAULT_STACK_SIZE);
++        }
++        u8* data() {
++            return memory;
++        }
++        size_t size() const {
++            return DEFAULT_STACK_SIZE;
++        }
++    };
++    MappedStack stack;
++    MappedStack rewind_stack;
++#else
+     std::array<u8, DEFAULT_STACK_SIZE> stack{};
+     std::array<u8, DEFAULT_STACK_SIZE> rewind_stack{};
++#endif
+     u32 canary_2 = CANARY_VALUE;
+ 
+     boost::context::detail::fcontext_t context{};
+diff --git a/src/common/host_memory.cpp b/src/common/host_memory.cpp
+--- a/src/common/host_memory.cpp
++++ b/src/common/host_memory.cpp
+@@ -708,7 +708,11 @@
+     : backing_size(backing_size_)
+     , virtual_size(virtual_size_)
+ {
+-#if defined(__OPENORBIS__) || defined(__managarm__)
++#if defined(__OPENORBIS__) || defined(__managarm__) || defined(CHIMERA)
++    // (Chimera: the machine's memory is one plain block, reached through the
++    // page table. The fastmem arena maps the same pages at several addresses
++    // from a memfd, which the sandbox does not have - and both flavours of
++    // the core are the same machine.)
+     LOG_WARNING(HW_Memory, "Platform doesn't support fastmem");
+     backing_base = static_cast<u8*>(mmap(nullptr, backing_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
+     virtual_base = nullptr;
+diff --git a/src/common/logging.cpp b/src/common/logging.cpp
+--- a/src/common/logging.cpp
++++ b/src/common/logging.cpp
+@@ -435,7 +435,13 @@
+         Entry e{
+             .message = nullptr,
+             .message_len = 0,
++#ifdef CHIMERA
++            // Chimera: no host time in the log (it lives in the machine's
++            // filesystem, so in its states)
++            .timestamp = std::chrono::microseconds{0},
++#else
+             .timestamp = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - logging_instance->time_origin),
++#endif
+             .log_class = log_class,
+             .log_level = log_level,
+             .filename = TrimSourcePath(filename),
+diff --git a/src/common/thread.cpp b/src/common/thread.cpp
+--- a/src/common/thread.cpp
++++ b/src/common/thread.cpp
+@@ -450,6 +450,12 @@
+ namespace Common {
+ 
+ void SetCurrentThreadPriority(ThreadPriority new_priority) {
++#ifdef CHIMERA
++    // Chimera: the host's scheduler is not the machine's business, and the
++    // sandbox has no priorities to set
++    (void)new_priority;
++    return;
++#endif
+ #ifdef _WIN32
+     int windows_priority = [&]() {
+         switch (new_priority) {
+diff --git a/src/core/core.cpp b/src/core/core.cpp
+--- a/src/core/core.cpp
++++ b/src/core/core.cpp
+@@ -544,6 +544,10 @@
+     Kernel::Svc::SleepThread(*g_chimera_system, nanoseconds);
+ }
+ 
++s64 ChimeraTimeNs() {
++    return g_chimera_system ? g_chimera_system->CoreTiming().GetGlobalTimeNs().count() : 0;
++}
++
+ System::System() : impl{std::make_unique<Impl>(*this)} {
+     g_chimera_system = this;
+ }
+diff --git a/src/core/core.h b/src/core/core.h
+--- a/src/core/core.h
++++ b/src/core/core.h
+@@ -148,6 +148,9 @@
+ /// condition whose signal would come from another guest thread or a
+ /// CoreTiming event: it sleeps on the machine's clock and looks again.
+ void ChimeraGuestSleep(s64 nanoseconds);
++/// Chimera: the machine's clock, for code that has no System at hand and
++/// would otherwise read the host's.
++s64 ChimeraTimeNs();
+ #endif
+ 
+ class System {
+diff --git a/src/core/hle/service/nvnflinger/buffer_queue_producer.cpp b/src/core/hle/service/nvnflinger/buffer_queue_producer.cpp
+--- a/src/core/hle/service/nvnflinger/buffer_queue_producer.cpp
++++ b/src/core/hle/service/nvnflinger/buffer_queue_producer.cpp
+@@ -11,6 +11,7 @@
+ #include "common/logging.h"
+ #include "common/settings.h"
+ #include "common/cpu_features.h"
++#include "core/core.h"
+ #include "core/hle/kernel/k_event.h"
+ #include "core/hle/kernel/k_readable_event.h"
+ #include "core/hle/kernel/kernel.h"
+@@ -488,7 +489,11 @@
+         slots[slot].buffer_state = BufferState::Queued;
+         slots[slot].frame_number = core->frame_counter;
+         slots[slot].queue_time = timestamp;
++#ifdef CHIMERA
++        slots[slot].presentation_time = Core::ChimeraTimeNs();
++#else
+         slots[slot].presentation_time = Common::g_wall_clock.GetTimeNS().count();
++#endif
+         slots[slot].fence = fence;
+ 
+         item.slot = slot;
+diff --git a/src/dynarmic/src/dynarmic/CMakeLists.txt b/src/dynarmic/src/dynarmic/CMakeLists.txt
+--- a/src/dynarmic/src/dynarmic/CMakeLists.txt
++++ b/src/dynarmic/src/dynarmic/CMakeLists.txt
+@@ -323,7 +323,12 @@
+     message(WARNING "TODO: Incomplete frontend for this host architecture")
+ endif()
+ 
+-if (WIN32)
++if (CHIMERA_HEADLESS)
++    # Chimera: no signal handler. Fastmem is off (the machine's memory is one
++    # plain block, reached through the page table), so no access faults on
++    # purpose, and the sandbox has no signals to install.
++    target_sources(dynarmic PRIVATE backend/exception_handler_generic.cpp)
++elseif (WIN32)
+     target_sources(dynarmic PRIVATE backend/exception_handler_windows.cpp)
+ elseif (APPLE)
+     find_path(MACH_EXC_DEFS_DIR "mach/mach_exc.defs")
+diff --git a/src/video_core/cdma_pusher.cpp b/src/video_core/cdma_pusher.cpp
+--- a/src/video_core/cdma_pusher.cpp
++++ b/src/video_core/cdma_pusher.cpp
+@@ -23,13 +23,10 @@
+     : host1x{host1x_}
+     , current_class{ChClassId(id)}
+ {
++#ifndef CHIMERA
+     thread = std::jthread([this](std::stop_token stop_token) {
+         Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
+         ChCommandHeaderList command_list{host1x.System().ApplicationMemory(), 0, 0};
+-        u32 count{};
+-        u32 method_offset{};
+-        u32 mask{};
+-        bool incrementing{};
+         while (!stop_token.stop_requested()) {
+             {
+                 std::unique_lock l{command_mutex};
+@@ -41,55 +38,61 @@
+                 command_list = std::move(command_lists.front());
+                 command_lists.pop_front();
+             }
++            ProcessCommandList(command_list);
++        }
++    });
++#endif
++}
+ 
+-            size_t i = 0;
+-            for (const auto value : command_list) {
+-                i++;
+-                if (mask != 0) {
+-                    const auto lbs = static_cast<u32>(std::countr_zero(mask));
+-                    mask &= ~(1U << lbs);
+-                    ExecuteCommand(method_offset + lbs, value.raw);
+-                    continue;
+-                } else if (count != 0) {
+-                    --count;
+-                    ExecuteCommand(method_offset, value.raw);
+-                    if (incrementing) {
+-                        ++method_offset;
+-                    }
+-                    continue;
+-                }
+-                const auto mode = value.submission_mode.Value();
+-                switch (mode) {
+-                case ChSubmissionMode::SetClass: {
+-                    mask = value.value & 0x3f;
+-                    method_offset = value.method_offset;
+-                    current_class = ChClassId((value.value >> 6) & 0x3ff);
+-                    break;
+-                }
+-                case ChSubmissionMode::Incrementing:
+-                case ChSubmissionMode::NonIncrementing:
+-                    count = value.value;
+-                    method_offset = value.method_offset;
+-                    incrementing = mode == ChSubmissionMode::Incrementing;
+-                    break;
+-                case ChSubmissionMode::Mask:
+-                    mask = value.value;
+-                    method_offset = value.method_offset;
+-                    break;
+-                case ChSubmissionMode::Immediate: {
+-                    const u32 data = value.value & 0xfff;
+-                    method_offset = value.method_offset;
+-                    ExecuteCommand(method_offset, data);
+-                    break;
+-                }
+-                default:
+-                    LOG_ERROR(HW_GPU, "Bad command at index {} (bytes {:#x}), buffer size {}", i - 1, (i - 1) * sizeof(u32), command_list.size());
+-                    UNIMPLEMENTED_MSG("ChSubmission mode {} is not implemented!", u32(mode));
+-                    break;
+-                }
++// One command list, start to end. The parser's state carries from one list
++// to the next (it was the thread's locals upstream).
++void CDmaPusher::ProcessCommandList(ChCommandHeaderList& command_list) {
++    size_t i = 0;
++    for (const auto value : command_list) {
++        i++;
++        if (mask != 0) {
++            const auto lbs = static_cast<u32>(std::countr_zero(mask));
++            mask &= ~(1U << lbs);
++            ExecuteCommand(method_offset + lbs, value.raw);
++            continue;
++        } else if (count != 0) {
++            --count;
++            ExecuteCommand(method_offset, value.raw);
++            if (incrementing) {
++                ++method_offset;
+             }
++            continue;
+         }
+-    });
++        const auto mode = value.submission_mode.Value();
++        switch (mode) {
++        case ChSubmissionMode::SetClass: {
++            mask = value.value & 0x3f;
++            method_offset = value.method_offset;
++            current_class = ChClassId((value.value >> 6) & 0x3ff);
++            break;
++        }
++        case ChSubmissionMode::Incrementing:
++        case ChSubmissionMode::NonIncrementing:
++            count = value.value;
++            method_offset = value.method_offset;
++            incrementing = mode == ChSubmissionMode::Incrementing;
++            break;
++        case ChSubmissionMode::Mask:
++            mask = value.value;
++            method_offset = value.method_offset;
++            break;
++        case ChSubmissionMode::Immediate: {
++            const u32 data = value.value & 0xfff;
++            method_offset = value.method_offset;
++            ExecuteCommand(method_offset, data);
++            break;
++        }
++        default:
++            LOG_ERROR(HW_GPU, "Bad command at index {} (bytes {:#x}), buffer size {}", i - 1, (i - 1) * sizeof(u32), command_list.size());
++            UNIMPLEMENTED_MSG("ChSubmission mode {} is not implemented!", u32(mode));
++            break;
++        }
++    }
+ }
+ 
+ CDmaPusher::~CDmaPusher() = default;
+diff --git a/src/video_core/cdma_pusher.h b/src/video_core/cdma_pusher.h
+--- a/src/video_core/cdma_pusher.h
++++ b/src/video_core/cdma_pusher.h
+@@ -110,9 +110,16 @@
+     virtual ~CDmaPusher();
+ 
+     void PushEntries(ChCommandHeaderList&& entries) {
++#ifdef CHIMERA
++        // Chimera: no decoder thread. When a decoded frame's syncpoint fires
++        // would be the host's timing; the list is processed where it was
++        // pushed, on the thread the machine runs on.
++        ProcessCommandList(entries);
++#else
+         std::scoped_lock l{command_mutex};
+         command_lists.push_back(std::move(entries));
+         command_cv.notify_one();
++#endif
+     }
+ 
+ protected:
+@@ -123,6 +130,13 @@
+ private:
+     /// Invoke command class devices to execute the command based on the current state
+     void ExecuteCommand(u32 state_offset, u32 data);
++    void ProcessCommandList(ChCommandHeaderList& command_list);
++
++    // the command stream's parser state
++    u32 count{};
++    u32 method_offset{};
++    u32 mask{};
++    bool incrementing{};
+ 
+ protected:
+     ThiRegisters thi_regs{};
+diff --git a/src/video_core/fence_manager.h b/src/video_core/fence_manager.h
+--- a/src/video_core/fence_manager.h
++++ b/src/video_core/fence_manager.h
+@@ -172,11 +172,18 @@
+         while (!fences.empty()) {
+             TFence& current_fence = fences.front();
+             if (ShouldWait() && !IsFenceSignaled(current_fence)) {
++#ifdef CHIMERA
++                // Chimera: never "not yet". When the host's GPU finishes is
++                // no fact of the machine's; what waits behind the fence (a
++                // syncpoint the game is watching) happens here, every time.
++                WaitFence(current_fence);
++#else
+                 if constexpr (force_wait) {
+                     WaitFence(current_fence);
+                 } else {
+                     return;
+                 }
++#endif
+             }
+             PopAsyncFlushes();
+             auto operations = std::move(pending_operations.front());

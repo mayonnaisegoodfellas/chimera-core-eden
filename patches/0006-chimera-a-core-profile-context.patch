@@ -1,0 +1,357 @@
+diff --git a/src/shader_recompiler/backend/glsl/emit_glsl.cpp b/src/shader_recompiler/backend/glsl/emit_glsl.cpp
+--- a/src/shader_recompiler/backend/glsl/emit_glsl.cpp
++++ b/src/shader_recompiler/backend/glsl/emit_glsl.cpp
+@@ -208,6 +208,14 @@
+     EmitCode(ctx, program);
+     const std::string version{fmt::format("#version 460{}\n", GlslVersionSpecifier(ctx))};
+     ctx.header.insert(0, version);
++#ifdef CHIMERA
++    // The state a compatibility profile kept in fixed function, as one
++    // uniform beside `scaling` and `render_area`: x and y the alpha test,
++    // z the Y direction (1 or -1). The pipeline sets it where it is named.
++    if (ctx.uses_chimera_state) {
++        ctx.header += "layout(location=2) uniform vec4 chimera_state;";
++    }
++#endif
+     if (program.shared_memory_size > 0) {
+         const auto requested_size{program.shared_memory_size};
+         const auto max_size{profile.gl_max_compute_smem_size};
+diff --git a/src/shader_recompiler/backend/glsl/emit_glsl_context_get_set.cpp b/src/shader_recompiler/backend/glsl/emit_glsl_context_get_set.cpp
+--- a/src/shader_recompiler/backend/glsl/emit_glsl_context_get_set.cpp
++++ b/src/shader_recompiler/backend/glsl/emit_glsl_context_get_set.cpp
+@@ -453,8 +453,14 @@
+ }
+ 
+ void EmitYDirection(EmitContext& ctx, IR::Inst& inst) {
++#ifdef CHIMERA
++    // (a core profile has no gl_FrontMaterial)
++    ctx.uses_chimera_state = true;
++    ctx.AddF32("{}=chimera_state.z;", inst);
++#else
+     ctx.uses_y_direction = true;
+     ctx.AddF32("{}=gl_FrontMaterial.ambient.a;", inst);
++#endif
+ }
+ 
+ void EmitResolutionDownFactor(EmitContext& ctx, IR::Inst& inst) {
+diff --git a/src/shader_recompiler/backend/glsl/emit_glsl_special.cpp b/src/shader_recompiler/backend/glsl/emit_glsl_special.cpp
+--- a/src/shader_recompiler/backend/glsl/emit_glsl_special.cpp
++++ b/src/shader_recompiler/backend/glsl/emit_glsl_special.cpp
+@@ -96,7 +96,27 @@
+     InitializeOutputVaryings(ctx);
+ }
+ 
++#ifdef CHIMERA
++// Chimera: the alpha test, which a core profile's fixed function no longer
++// has. chimera_state.x is the comparison (0: no test; 1..8 never, less,
++// equal, less or equal, greater, not equal, greater or equal, always),
++// chimera_state.y the reference.
++void EmitEpilogue(EmitContext& ctx) {
++    if (ctx.stage != Stage::Fragment) {
++        return;
++    }
++    if (!ctx.info.stores_frag_color[0] && !ctx.profile.need_declared_frag_colors) {
++        return;
++    }
++    ctx.uses_chimera_state = true;
++    ctx.Add("if(chimera_state.x!=0.0){{float ca=frag_color0.a;float cr=chimera_state.y;"
++            "int cf=int(chimera_state.x);"
++            "bool cp=cf==1?false:cf==2?ca<cr:cf==3?ca==cr:cf==4?ca<=cr:cf==5?ca>cr:cf==6?ca!=cr:"
++            "cf==7?ca>=cr:true;if(!cp){{discard;}}}}");
++}
++#else
+ void EmitEpilogue(EmitContext&) {}
++#endif
+ 
+ void EmitEmitVertex(EmitContext& ctx, const IR::Value& stream) {
+     ctx.Add("EmitStreamVertex(int({}));", ctx.var_alloc.Consume(stream));
+diff --git a/src/shader_recompiler/backend/glsl/glsl_emit_context.h b/src/shader_recompiler/backend/glsl/glsl_emit_context.h
+--- a/src/shader_recompiler/backend/glsl/glsl_emit_context.h
++++ b/src/shader_recompiler/backend/glsl/glsl_emit_context.h
+@@ -155,6 +155,8 @@
+     u32 num_safety_loop_vars{};
+ 
+     bool uses_y_direction{};
++    /// Chimera: the stage reads chimera_state (see EmitGLSL)
++    bool uses_chimera_state{};
+     bool uses_cc_carry{};
+     bool uses_geometry_passthrough{};
+ 
+diff --git a/src/video_core/renderer_opengl/blit_image.cpp b/src/video_core/renderer_opengl/blit_image.cpp
+--- a/src/video_core/renderer_opengl/blit_image.cpp
++++ b/src/video_core/renderer_opengl/blit_image.cpp
+@@ -31,7 +31,9 @@
+     glDisable(GL_STENCIL_TEST);
+     glDisable(GL_POLYGON_OFFSET_FILL);
+     glDisable(GL_RASTERIZER_DISCARD);
++#ifndef CHIMERA
+     glDisable(GL_ALPHA_TEST);
++#endif
+     glDisablei(GL_BLEND, 0);
+     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+     glFrontFace(GL_CW);
+diff --git a/src/video_core/renderer_opengl/gl_blit_screen.cpp b/src/video_core/renderer_opengl/gl_blit_screen.cpp
+--- a/src/video_core/renderer_opengl/gl_blit_screen.cpp
++++ b/src/video_core/renderer_opengl/gl_blit_screen.cpp
+@@ -55,7 +55,9 @@
+     glDisable(GL_STENCIL_TEST);
+     glDisable(GL_POLYGON_OFFSET_FILL);
+     glDisable(GL_RASTERIZER_DISCARD);
++#ifndef CHIMERA
+     glDisable(GL_ALPHA_TEST);
++#endif
+     glDisablei(GL_BLEND, 0);
+     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+     glCullFace(GL_BACK);
+diff --git a/src/video_core/renderer_opengl/gl_device.cpp b/src/video_core/renderer_opengl/gl_device.cpp
+--- a/src/video_core/renderer_opengl/gl_device.cpp
++++ b/src/video_core/renderer_opengl/gl_device.cpp
+@@ -251,6 +251,16 @@
+         }
+     }
+     has_lmem_perf_bug = is_nvidia;
++#ifdef CHIMERA
++    // Chimera: the GPU bridge carries OpenGL's own entry points and none of
++    // a vendor's, whatever the driver's extension list says. The paths that
++    // would call one are off on every GPU (on NVIDIA, glDepthRangeIndexeddNV
++    // was the first call through a pointer that is not there).
++    has_depth_buffer_float = false;
++    has_vertex_buffer_unified_memory = false;
++    has_draw_texture = false;
++    use_assembly_shaders = false;
++#endif
+ 
+     strict_context_required = emu_window.StrictContextRequired();
+     // Blocks Intel OpenGL drivers on Windows from using asynchronous shader compilation.
+diff --git a/src/video_core/renderer_opengl/gl_graphics_pipeline.cpp b/src/video_core/renderer_opengl/gl_graphics_pipeline.cpp
+--- a/src/video_core/renderer_opengl/gl_graphics_pipeline.cpp
++++ b/src/video_core/renderer_opengl/gl_graphics_pipeline.cpp
+@@ -234,6 +234,11 @@
+     if (key.xfb_enabled && device.UseAssemblyShaders()) {
+         GenerateTransformFeedbackState();
+     }
++#ifdef CHIMERA
++    for (size_t stage = 0; stage < 5; ++stage) {
++        chimera_state_used[stage] = sources[stage].find("chimera_state") != std::string::npos;
++    }
++#endif
+     const bool in_parallel = thread_worker != nullptr;
+     auto func{[this, sources_ = std::move(sources), sources_spirv_ = std::move(sources_spirv),
+                shader_notify, backend, in_parallel,
+@@ -534,6 +539,25 @@
+                                    render_area_height, 0.0f, 0.0f);
+             }
+         }
++#ifdef CHIMERA
++        if (chimera_state_used[stage] && !use_assembly) {
++            f32 comparison = 0.0f;
++            if (regs.alpha_test_enabled != 0) {
++                const u32 raw = static_cast<u32>(regs.alpha_test_func);
++                comparison = static_cast<f32>((raw & 0x200) != 0 ? (raw & 7) + 1 : raw);
++                if (comparison == 8.0f) {
++                    comparison = 0.0f; // always: no test
++                }
++            }
++            const bool lower_left = regs.window_origin.mode != Maxwell::WindowOrigin::Mode::UpperLeft;
++            const std::array<f32, 3> now{comparison, regs.alpha_test_ref, lower_left ? -1.0f : 1.0f};
++            if (!chimera_state_known[stage] || now != chimera_state_set[stage]) {
++                glProgramUniform4f(source_programs[stage].handle, 2, now[0], now[1], now[2], 0.0f);
++                chimera_state_set[stage] = now;
++                chimera_state_known[stage] = true;
++            }
++        }
++#endif
+     }};
+     if constexpr (Spec::enabled_stages[0]) {
+         prepare_stage(0);
+diff --git a/src/video_core/renderer_opengl/gl_graphics_pipeline.h b/src/video_core/renderer_opengl/gl_graphics_pipeline.h
+--- a/src/video_core/renderer_opengl/gl_graphics_pipeline.h
++++ b/src/video_core/renderer_opengl/gl_graphics_pipeline.h
+@@ -164,6 +164,13 @@
+     std::condition_variable built_condvar;
+     OGLSync built_fence{};
+     bool is_built{false};
++
++#ifdef CHIMERA
++    /// The stages whose source names chimera_state, and what each was last given
++    std::array<bool, 5> chimera_state_used{};
++    std::array<bool, 5> chimera_state_known{};
++    std::array<std::array<f32, 3>, 5> chimera_state_set{};
++#endif
+ };
+ 
+ } // namespace OpenGL
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.cpp b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+--- a/src/video_core/renderer_opengl/gl_rasterizer.cpp
++++ b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+@@ -263,6 +263,11 @@
+         const auto& draw_state = maxwell3d->draw_manager.draw_state;
+         const GLuint base_instance = GLuint(draw_state.base_instance);
+         const GLsizei num_instances = GLsizei(instance_count);
++#ifdef CHIMERA
++        if (draw_state.topology == Maxwell::PrimitiveTopology::Quads) {
++            return ChimeraDrawQuads(is_indexed, num_instances, base_instance);
++        }
++#endif
+         if (is_indexed) {
+             const GLint base_vertex = GLint(draw_state.base_index);
+             const GLsizei num_vertices = GLsizei(draw_state.index_buffer.count);
+@@ -301,6 +306,63 @@
+     });
+ }
+ 
++#ifdef CHIMERA
++void RasterizerOpenGL::ChimeraDrawQuads(bool is_indexed, GLsizei num_instances,
++                                        GLuint base_instance) {
++    const auto& draw_state = maxwell3d->draw_manager.draw_state;
++    // the two triangles of a quad, as the Vulkan backend splits it
++    static constexpr std::array<u32, 6> SPLIT{0, 1, 2, 0, 2, 3};
++    auto& indices = chimera_quad_indices;
++    indices.clear();
++    GLint base_vertex = 0;
++    if (is_indexed) {
++        base_vertex = GLint(draw_state.base_index);
++        const u32 count = draw_state.index_buffer.count;
++        const u32 width = u32(draw_state.index_buffer.FormatSizeInBytes());
++        std::vector<u8> raw(size_t(count) * width);
++        if (!draw_state.inline_index_draw_indexes.empty()) {
++            std::memcpy(raw.data(), draw_state.inline_index_draw_indexes.data(),
++                        (std::min)(raw.size(), draw_state.inline_index_draw_indexes.size()));
++        } else {
++            gpu_memory->ReadBlockUnsafe(draw_state.index_buffer.StartAddress() +
++                                            u64(draw_state.index_buffer.first) * width,
++                                        raw.data(), raw.size());
++        }
++        const auto at = [&](u32 i) -> u32 {
++            u32 value = 0;
++            std::memcpy(&value, raw.data() + size_t(i) * width, width);
++            return value;
++        };
++        for (u32 quad = 0; quad + 3 < count; quad += 4) {
++            for (const u32 corner : SPLIT) {
++                indices.push_back(at(quad + corner));
++            }
++        }
++    } else {
++        base_vertex = GLint(draw_state.vertex_buffer.first);
++        const u32 count = draw_state.vertex_buffer.count;
++        for (u32 quad = 0; quad + 3 < count; quad += 4) {
++            for (const u32 corner : SPLIT) {
++                indices.push_back(quad + corner);
++            }
++        }
++    }
++    if (indices.empty()) {
++        return;
++    }
++    if (chimera_quad_buffer.handle == 0) {
++        chimera_quad_buffer.Create();
++    }
++    glNamedBufferData(chimera_quad_buffer.handle, GLsizeiptr(indices.size() * sizeof(u32)),
++                      indices.data(), GL_STREAM_DRAW);
++    // (the buffer cache binds its own before every indexed draw, the same way)
++    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, chimera_quad_buffer.handle);
++    glDrawElementsInstancedBaseVertexBaseInstance(GL_TRIANGLES, GLsizei(indices.size()),
++                                                  GL_UNSIGNED_INT, nullptr, num_instances,
++                                                  base_vertex, base_instance);
++}
++#endif
++
+ void RasterizerOpenGL::DrawIndirect() {
+     const auto& params = maxwell3d->draw_manager.indirect_state;
+     buffer_cache.SetDrawIndirect(&params);
+@@ -1116,8 +1178,11 @@
+     }
+     flags[Dirty::FragmentClampColor] = false;
+ 
++#ifndef CHIMERA
++    // (not in a core profile: a fragment colour is clamped by its target's format)
+     glClampColor(GL_CLAMP_FRAGMENT_COLOR,
+                  maxwell3d->regs.frag_color_clamp.AnyEnabled() ? GL_TRUE : GL_FALSE);
++#endif
+ }
+ 
+ void RasterizerOpenGL::SyncBlendState() {
+@@ -1268,7 +1333,10 @@
+     }
+     flags[Dirty::PointSize] = false;
+ 
++#ifndef CHIMERA
++    // (a core profile's points are always sprites)
+     oglEnable(GL_POINT_SPRITE, maxwell3d->regs.point_sprite_enable);
++#endif
+     oglEnable(GL_PROGRAM_POINT_SIZE, maxwell3d->regs.point_size_attribute.enabled);
+     const bool is_rescaling{texture_cache.IsRescaling()};
+     const float scale = is_rescaling ? Settings::values.resolution_info.up_factor : 1.0f;
+@@ -1315,8 +1383,9 @@
+     flags[Dirty::AlphaTest] = false;
+ 
+ #ifdef CHIMERA
+-    // Chimera: the GPU bridge's context is a core profile one - no fixed
+-    // function alpha test, and no glAlphaFunc in the bridge's list
++    // Chimera: the GPU bridge's context is a core profile one, with no fixed
++    // function alpha test: the fragment shader does it (EmitEpilogue), from
++    // a uniform the pipeline sets at every draw.
+     return;
+ #endif
+     const auto& regs = maxwell3d->regs;
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.h b/src/video_core/renderer_opengl/gl_rasterizer.h
+--- a/src/video_core/renderer_opengl/gl_rasterizer.h
++++ b/src/video_core/renderer_opengl/gl_rasterizer.h
+@@ -155,6 +155,13 @@
+     template <typename Func>
+     void PrepareDraw(bool is_indexed, Func&&);
+ 
++#ifdef CHIMERA
++    /// Separate quads as two triangles each, through an index list
++    void ChimeraDrawQuads(bool is_indexed, GLsizei num_instances, GLuint base_instance);
++    OGLBuffer chimera_quad_buffer;
++    std::vector<u32> chimera_quad_indices;
++#endif
++
+     /// Syncs state to match guest's
+     void SyncState();
+ 
+diff --git a/src/video_core/renderer_opengl/gl_state_tracker.h b/src/video_core/renderer_opengl/gl_state_tracker.h
+--- a/src/video_core/renderer_opengl/gl_state_tracker.h
++++ b/src/video_core/renderer_opengl/gl_state_tracker.h
+@@ -121,8 +121,11 @@
+         }
+         // Y_NEGATE is mapped to gl_FrontMaterial.ambient.a
+         y_negate = new_y_negate;
++#ifndef CHIMERA
++        // (Chimera: the shaders read it from a uniform of their own)
+         const std::array ambient{0.0f, 0.0f, 0.0f, y_negate ? -1.0f : 1.0f};
+         glMaterialfv(GL_FRONT, GL_AMBIENT, ambient.data());
++#endif
+     }
+ 
+     void NotifyScreenDrawVertexArray() {
+diff --git a/src/video_core/renderer_opengl/maxwell_to_gl.h b/src/video_core/renderer_opengl/maxwell_to_gl.h
+--- a/src/video_core/renderer_opengl/maxwell_to_gl.h
++++ b/src/video_core/renderer_opengl/maxwell_to_gl.h
+@@ -252,12 +252,24 @@
+         return GL_TRIANGLE_STRIP;
+     case Maxwell::PrimitiveTopology::TriangleFan:
+         return GL_TRIANGLE_FAN;
++#ifdef CHIMERA
++    // A core profile draws no quads and no polygons. A quad strip's vertices
++    // are a triangle strip's and a convex polygon's a fan's; separate quads
++    // are drawn through an index list (RasterizerOpenGL::ChimeraDrawQuads).
++    case Maxwell::PrimitiveTopology::Quads:
++        return GL_TRIANGLES;
++    case Maxwell::PrimitiveTopology::QuadStrip:
++        return GL_TRIANGLE_STRIP;
++    case Maxwell::PrimitiveTopology::Polygon:
++        return GL_TRIANGLE_FAN;
++#else
+     case Maxwell::PrimitiveTopology::Quads:
+         return GL_QUADS;
+     case Maxwell::PrimitiveTopology::QuadStrip:
+         return GL_QUAD_STRIP;
+     case Maxwell::PrimitiveTopology::Polygon:
+         return GL_POLYGON;
++#endif
+     case Maxwell::PrimitiveTopology::LinesAdjacency:
+         return GL_LINES_ADJACENCY;
+     case Maxwell::PrimitiveTopology::LineStripAdjacency:

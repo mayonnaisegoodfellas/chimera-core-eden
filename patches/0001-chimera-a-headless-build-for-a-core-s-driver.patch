@@ -1,0 +1,121 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -71,6 +71,14 @@
+ endif()
+ 
+ # qt stuff
++# Chimera: the emulator's libraries under a core's own driver - no frontend,
++# no window, no SDL, no host audio or input (see CHIMERA_DRIVER_DIR in src/)
++option(CHIMERA_HEADLESS "Build the libraries for a Chimera core's driver" OFF)
++set(CHIMERA_DRIVER_DIR "" CACHE PATH "The driver's CMake directory (CHIMERA_HEADLESS)")
++if (CHIMERA_HEADLESS)
++    add_compile_definitions(CHIMERA=1)
++endif()
++
+ option(ENABLE_QT "Enable the Qt frontend" ON)
+ option(ENABLE_QT_TRANSLATION "Enable translations for the Qt frontend" OFF)
+ option(ENABLE_UPDATE_CHECKER "Enable update checker (for Qt and Android)" OFF)
+@@ -565,7 +573,7 @@
+         find_package(oaknut)
+     endif()
+ 
+-    if (NOT ANDROID)
++    if (NOT ANDROID AND NOT CHIMERA_HEADLESS)
+         find_package(SDL3)
+     endif()
+ 
+diff --git a/externals/CMakeLists.txt b/externals/CMakeLists.txt
+--- a/externals/CMakeLists.txt
++++ b/externals/CMakeLists.txt
+@@ -141,7 +141,9 @@
+     endif()
+ endif()
+ 
+-if (NOT YUZU_USE_BUNDLED_SDL3)
++if (CHIMERA_HEADLESS)
++    # no SDL: a Chimera core has no window, no host audio and no host input
++elseif (NOT YUZU_USE_BUNDLED_SDL3)
+     if (NOT WIN32)
+         # Yuzu itself needs: Atomic Audio Events Joystick Haptic Sensor Threads Timers
+         # Since 2.0.18 Atomic+Threads required for HIDAPI/libusb (see https://github.com/libsdl-org/SDL/issues/5095)
+@@ -175,7 +177,7 @@
+ 
+ # Normalize SDL3 link target across package variants.
+ # Some SDL3 packages export only SDL3::SDL3-shared or SDL3::SDL3-static.
+-if (NOT TARGET SDL3::SDL3)
++if (NOT TARGET SDL3::SDL3 AND NOT CHIMERA_HEADLESS)
+     if (TARGET SDL3::SDL3-shared)
+         add_library(SDL3::SDL3 ALIAS SDL3::SDL3-shared)
+     elseif (TARGET SDL3::SDL3-static)
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -268,10 +268,16 @@
+ add_subdirectory(audio_core)
+ add_subdirectory(video_core)
+ add_subdirectory(hid_core)
+-add_subdirectory(input_common)
++if (NOT CHIMERA_HEADLESS)
++    add_subdirectory(input_common)
++endif()
+ add_subdirectory(frontend_common)
+ add_subdirectory(shader_recompiler)
+ 
++if (CHIMERA_HEADLESS)
++    add_subdirectory(${CHIMERA_DRIVER_DIR} chimera-driver)
++endif()
++
+ if (YUZU_TESTS)
+     add_subdirectory(tests)
+ endif()
+diff --git a/src/audio_core/CMakeLists.txt b/src/audio_core/CMakeLists.txt
+--- a/src/audio_core/CMakeLists.txt
++++ b/src/audio_core/CMakeLists.txt
+@@ -238,11 +238,13 @@
+     target_compile_definitions(audio_core PRIVATE HAVE_CUBEB=1)
+ endif()
+ 
+-target_sources(audio_core PRIVATE
+-    sink/sdl3_sink.cpp
+-    sink/sdl3_sink.h)
++if (NOT CHIMERA_HEADLESS)
++    target_sources(audio_core PRIVATE
++        sink/sdl3_sink.cpp
++        sink/sdl3_sink.h)
+ 
+-target_link_libraries(audio_core PRIVATE SDL3::SDL3)
+-target_compile_definitions(audio_core PRIVATE HAVE_SDL3)
++    target_link_libraries(audio_core PRIVATE SDL3::SDL3)
++    target_compile_definitions(audio_core PRIVATE HAVE_SDL3)
++endif()
+ 
+ create_target_directory_groups(audio_core)
+diff --git a/src/common/fs/path_util.cpp b/src/common/fs/path_util.cpp
+--- a/src/common/fs/path_util.cpp
++++ b/src/common/fs/path_util.cpp
+@@ -111,7 +111,7 @@
+     void Reinitialize(fs::path eden_path = {}) {
+         fs::path eden_path_cache;
+         fs::path eden_path_config;
+-#ifdef _WIN32
++#if defined(_WIN32) && !defined(CHIMERA)
+         // User directory takes priority over global %AppData% directory
+         eden_path = GetExeDirectory() / PORTABLE_DIR;
+         if (!Exists(eden_path) || !IsDir(eden_path)) {
+@@ -127,6 +127,15 @@
+         LEGACY_PATH(Yuzu, YUZU)
+         LEGACY_PATH(Suyu, SUYU)
+ #undef LEGACY_PATH
++#elif defined(CHIMERA)
++        // Chimera: the machine's own directory, given by the driver
++        // (SetAppDirectory), and nothing of the host's - no XDG directory,
++        // no other emulator's. Until the driver names it there is none.
++        if (eden_path.empty()) {
++            return;
++        }
++        eden_path_cache = eden_path / CACHE_DIR;
++        eden_path_config = eden_path / CONFIG_DIR;
+ #elif __ANDROID__
+         ASSERT(!eden_path.empty());
+         eden_path_cache = eden_path / CACHE_DIR;

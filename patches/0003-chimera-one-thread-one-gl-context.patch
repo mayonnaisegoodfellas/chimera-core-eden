@@ -1,0 +1,201 @@
+diff --git a/src/core/core.cpp b/src/core/core.cpp
+--- a/src/core/core.cpp
++++ b/src/core/core.cpp
+@@ -16,6 +16,7 @@
+ #include "common/string_util.h"
+ #include "core/arm/exclusive_monitor.h"
+ #include "core/core.h"
++#include "core/hle/kernel/svc.h"
+ 
+ #include "launch_timestamp_cache.h"
+ #include "core/core_timing.h"
+@@ -534,7 +535,21 @@
+     }
+ };
+ 
++#ifdef CHIMERA
++namespace {
++System* g_chimera_system{};
++}
++
++void ChimeraGuestSleep(s64 nanoseconds) {
++    Kernel::Svc::SleepThread(*g_chimera_system, nanoseconds);
++}
++
++System::System() : impl{std::make_unique<Impl>(*this)} {
++    g_chimera_system = this;
++}
++#else
+ System::System() : impl{std::make_unique<Impl>(*this)} {}
++#endif
+ 
+ System::~System() = default;
+ 
+diff --git a/src/core/core.h b/src/core/core.h
+--- a/src/core/core.h
++++ b/src/core/core.h
+@@ -142,6 +142,14 @@
+     ErrorLoader,         ///< The base for loader errors (too many to repeat)
+ };
+ 
++#ifdef CHIMERA
++/// Chimera: a wait inside the emulator's own code, on a guest thread. Every
++/// guest thread shares one host thread, so it cannot block on a host
++/// condition whose signal would come from another guest thread or a
++/// CoreTiming event: it sleeps on the machine's clock and looks again.
++void ChimeraGuestSleep(s64 nanoseconds);
++#endif
++
+ class System {
+ public:
+     using CurrentBuildProcessID = std::array<u8, 0x20>;
+diff --git a/src/core/frontend/graphics_context.h b/src/core/frontend/graphics_context.h
+--- a/src/core/frontend/graphics_context.h
++++ b/src/core/frontend/graphics_context.h
+@@ -25,6 +25,14 @@
+     /// Releases (dunno if this is the "right" word) the context from the caller thread
+     virtual void DoneCurrent() {}
+ 
++#ifdef CHIMERA
++    /// Chimera: the framebuffer the finished picture is drawn into. The GPU
++    /// bridge's context has no window behind it, so no framebuffer 0.
++    virtual unsigned int DefaultFramebuffer() {
++        return 0;
++    }
++#endif
++
+     /// Gets the GPU driver library (used by Android only)
+     virtual std::shared_ptr<Common::DynamicLibrary> GetDriverLibrary() {
+         return {};
+diff --git a/src/core/hle/service/nvnflinger/buffer_queue_core.cpp b/src/core/hle/service/nvnflinger/buffer_queue_core.cpp
+--- a/src/core/hle/service/nvnflinger/buffer_queue_core.cpp
++++ b/src/core/hle/service/nvnflinger/buffer_queue_core.cpp
+@@ -9,6 +9,7 @@
+ 
+ #include "common/assert.h"
+ 
++#include "core/core.h"
+ #include "core/hle/service/nvnflinger/buffer_queue_core.h"
+ 
+ namespace Service::android {
+@@ -56,6 +57,17 @@
+ }
+ 
+ bool BufferQueueCore::WaitForDequeueCondition(std::unique_lock<std::mutex>& lk) {
++#ifdef CHIMERA
++    // the consumer that frees a slot is the compositor, at vsync, on the
++    // same host thread: wait on the machine's clock
++    while (!dequeue_possible.load()) {
++        lk.unlock();
++        Core::ChimeraGuestSleep(100'000);
++        lk.lock();
++    }
++    dequeue_possible.store(false);
++    return true;
++#endif
+     dequeue_condition.wait(lk, [&] { return dequeue_possible.load(); });
+     dequeue_possible.store(false);
+ 
+@@ -133,7 +145,13 @@
+ 
+ void BufferQueueCore::WaitWhileAllocatingLocked() const {
+     while (is_allocating) {
++#ifdef CHIMERA
++        mutex.unlock();
++        Core::ChimeraGuestSleep(100'000);
++        mutex.lock();
++#else
+         is_allocating_condition.wait(mutex);
++#endif
+     }
+ }
+ 
+diff --git a/src/video_core/gpu_thread.cpp b/src/video_core/gpu_thread.cpp
+--- a/src/video_core/gpu_thread.cpp
++++ b/src/video_core/gpu_thread.cpp
+@@ -27,6 +27,14 @@
+ 
+ void ThreadManager::StartThread(VideoCore::RendererBase& renderer, Core::Frontend::GraphicsContext& context, Tegra::Control::Scheduler& scheduler) {
+     rasterizer = renderer.ReadRasterizer();
++#ifdef CHIMERA
++    // Chimera: no GPU thread. The GPU bridge is one context, and the machine
++    // one timeline: every command runs where it was pushed (PushCommand), on
++    // the thread the machine runs on.
++    chimera_renderer = &renderer;
++    chimera_scheduler = &scheduler;
++    return;
++#endif
+     thread = std::jthread([&](std::stop_token stop_token) {
+         Common::SetCurrentThreadName("GPU");
+         Common::SetCurrentThreadPriority(Common::ThreadPriority::Critical);
+@@ -95,6 +103,26 @@
+ }
+ 
+ u64 ThreadManager::PushCommand(CommandData&& command_data, bool block, bool is_async) {
++#ifdef CHIMERA
++    {
++        const u64 fence{++state.last_fence};
++        if (auto* submit_list = std::get_if<SubmitListCommand>(&command_data)) {
++            chimera_scheduler->Push(system.GPU(), submit_list->channel,
++                                    std::move(submit_list->entries));
++        } else if (std::holds_alternative<GPUTickCommand>(command_data)) {
++            system.GPU().TickWork();
++        } else if (const auto* flush = std::get_if<FlushRegionCommand>(&command_data)) {
++            chimera_renderer->ReadRasterizer()->FlushRegion(flush->addr, flush->size);
++        } else if (const auto* invalidate = std::get_if<InvalidateRegionCommand>(&command_data)) {
++            chimera_renderer->ReadRasterizer()->OnCacheInvalidation(invalidate->addr,
++                                                                    invalidate->size);
++        } else {
++            ASSERT(false);
++        }
++        state.signaled_fence.store(fence);
++        return fence;
++    }
++#endif
+     if (!is_async) {
+         // In synchronous GPU mode, block the caller until the command has executed
+         block = true;
+diff --git a/src/video_core/gpu_thread.h b/src/video_core/gpu_thread.h
+--- a/src/video_core/gpu_thread.h
++++ b/src/video_core/gpu_thread.h
+@@ -135,6 +135,10 @@
+     VideoCore::RasterizerInterface* rasterizer = nullptr;
+     SynchState state;
+     std::jthread thread;
++#ifdef CHIMERA
++    VideoCore::RendererBase* chimera_renderer{};
++    Tegra::Control::Scheduler* chimera_scheduler{};
++#endif
+ };
+ 
+ } // namespace VideoCommon::GPUThread
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.cpp b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+--- a/src/video_core/renderer_opengl/gl_rasterizer.cpp
++++ b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+@@ -1314,6 +1314,11 @@
+     }
+     flags[Dirty::AlphaTest] = false;
+ 
++#ifdef CHIMERA
++    // Chimera: the GPU bridge's context is a core profile one - no fixed
++    // function alpha test, and no glAlphaFunc in the bridge's list
++    return;
++#endif
+     const auto& regs = maxwell3d->regs;
+     if (regs.alpha_test_enabled) {
+         glEnable(GL_ALPHA_TEST);
+diff --git a/src/video_core/renderer_opengl/renderer_opengl.cpp b/src/video_core/renderer_opengl/renderer_opengl.cpp
+--- a/src/video_core/renderer_opengl/renderer_opengl.cpp
++++ b/src/video_core/renderer_opengl/renderer_opengl.cpp
+@@ -142,7 +142,11 @@
+     RenderAppletCaptureLayer(framebuffers);
+     RenderScreenshot(framebuffers);
+ 
++#ifdef CHIMERA
++    state_tracker.BindFramebuffer(context->DefaultFramebuffer());
++#else
+     state_tracker.BindFramebuffer(0);
++#endif
+     blit_screen->DrawScreen(framebuffers, emu_window.GetFramebufferLayout(), false);
+ 
+     ++m_current_frame;

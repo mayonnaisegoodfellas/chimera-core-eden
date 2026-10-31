@@ -1,0 +1,855 @@
+diff --git a/src/audio_core/adsp/apps/audio_renderer/audio_renderer.cpp b/src/audio_core/adsp/apps/audio_renderer/audio_renderer.cpp
+--- a/src/audio_core/adsp/apps/audio_renderer/audio_renderer.cpp
++++ b/src/audio_core/adsp/apps/audio_renderer/audio_renderer.cpp
+@@ -27,6 +27,11 @@
+ 
+ void AudioRenderer::Start() {
+     CreateSinkStreams();
++#ifdef CHIMERA
++    // Chimera: no DSP thread; SystemManager's CoreTiming event renders
++    running = true;
++    return;
++#endif
+ 
+     mailbox.Initialize(AppMailboxId::AudioRenderer);
+ 
+@@ -45,6 +50,17 @@
+     if (!running) {
+         return;
+     }
++#ifdef CHIMERA
++    for (auto& stream : streams) {
++        if (stream) {
++            stream->Stop();
++            sink.CloseStream(stream);
++            stream = nullptr;
++        }
++    }
++    running = false;
++    return;
++#endif
+ 
+     mailbox.Send(Direction::DSP, Message::Shutdown);
+     if (mailbox.Receive(Direction::Host) != Message::Shutdown) {
+@@ -66,6 +82,9 @@
+ 
+ void AudioRenderer::Signal() {
+     signalled_tick = system.CoreTiming().GetGlobalTimeNs().count();
++#ifdef CHIMERA
++    return;
++#endif
+     Send(Direction::DSP, Message::Render);
+ }
+ 
+@@ -129,6 +148,72 @@
+     }
+ }
+ 
++// One render: every session's command list processed into its stream.
++void AudioRenderer::RenderCommandLists(bool wait_free_space, std::stop_token stop_token) {
++    // 0.12 seconds (2,304,000 / 19,200,000)
++    constexpr u64 max_process_time{2'304'000ULL};
++
++    std::array<bool, MaxRendererSessions> buffers_reset{};
++    std::array<u64, MaxRendererSessions> render_times_taken{};
++    const auto start_time{system.CoreTiming().GetGlobalTimeUs().count()};
++
++    for (u32 index = 0; index < MaxRendererSessions; index++) {
++        auto& command_buffer{command_buffers[index]};
++        auto& command_list_processor{command_list_processors[index]};
++
++        // Check this buffer is valid, as it may not be used.
++        if (command_buffer.buffer != 0) {
++            // If there are no remaining commands (from the previous list),
++            // this is a new command list, initialize it.
++            if (command_buffer.remaining_command_count == 0) {
++                command_list_processor.Initialize(system, *command_buffer.process,
++                    command_buffer.buffer,
++                    command_buffer.size, streams[index]);
++            }
++
++            if (command_buffer.reset_buffer && !buffers_reset[index]) {
++                streams[index]->ClearQueue();
++                buffers_reset[index] = true;
++            }
++
++            u64 max_time{max_process_time};
++            if (index == 1 && command_buffer.applet_resource_user_id ==
++                                  command_buffers[0].applet_resource_user_id) {
++                max_time = max_process_time - render_times_taken[0];
++                if (render_times_taken[0] > max_process_time) {
++                    max_time = 0;
++                }
++            }
++
++            max_time = (std::min)(command_buffer.time_limit, max_time);
++            command_list_processor.SetProcessTimeMax(max_time);
++
++            if (index == 0 && wait_free_space) {
++                streams[index]->WaitFreeSpace(stop_token);
++            }
++
++            // Process the command list
++            {
++                render_times_taken[index] =
++                    command_list_processor.Process(index) - start_time;
++            }
++
++            const auto end_time{system.CoreTiming().GetGlobalTimeUs().count()};
++
++            command_buffer.remaining_command_count =
++                command_list_processor.GetRemainingCommandCount();
++            command_buffer.render_time_taken_us = end_time - start_time;
++        }
++    }
++}
++
++#ifdef CHIMERA
++void AudioRenderer::RenderOnce() {
++    RenderCommandLists(false, {});
++    PostDSPClearCommandBuffer();
++}
++#endif
++
+ void AudioRenderer::Main(std::stop_token stop_token) {
+     Common::SetCurrentThreadName("DSP_AudioRenderer_Main");
+     Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
+@@ -159,58 +244,7 @@
+                 mailbox.Send(Direction::Host, Message::RenderResponse);
+                 continue;
+             }
+-            std::array<bool, MaxRendererSessions> buffers_reset{};
+-            std::array<u64, MaxRendererSessions> render_times_taken{};
+-            const auto start_time{system.CoreTiming().GetGlobalTimeUs().count()};
+-
+-            for (u32 index = 0; index < MaxRendererSessions; index++) {
+-                auto& command_buffer{command_buffers[index]};
+-                auto& command_list_processor{command_list_processors[index]};
+-
+-                // Check this buffer is valid, as it may not be used.
+-                if (command_buffer.buffer != 0) {
+-                    // If there are no remaining commands (from the previous list),
+-                    // this is a new command list, initialize it.
+-                    if (command_buffer.remaining_command_count == 0) {
+-                        command_list_processor.Initialize(system, *command_buffer.process,
+-                            command_buffer.buffer,
+-                            command_buffer.size, streams[index]);
+-                    }
+-
+-                    if (command_buffer.reset_buffer && !buffers_reset[index]) {
+-                        streams[index]->ClearQueue();
+-                        buffers_reset[index] = true;
+-                    }
+-
+-                    u64 max_time{max_process_time};
+-                    if (index == 1 && command_buffer.applet_resource_user_id ==
+-                                          command_buffers[0].applet_resource_user_id) {
+-                        max_time = max_process_time - render_times_taken[0];
+-                        if (render_times_taken[0] > max_process_time) {
+-                            max_time = 0;
+-                        }
+-                    }
+-
+-                    max_time = (std::min)(command_buffer.time_limit, max_time);
+-                    command_list_processor.SetProcessTimeMax(max_time);
+-
+-                    if (index == 0) {
+-                        streams[index]->WaitFreeSpace(stop_token);
+-                    }
+-
+-                    // Process the command list
+-                    {
+-                        render_times_taken[index] =
+-                            command_list_processor.Process(index) - start_time;
+-                    }
+-
+-                    const auto end_time{system.CoreTiming().GetGlobalTimeUs().count()};
+-
+-                    command_buffer.remaining_command_count =
+-                        command_list_processor.GetRemainingCommandCount();
+-                    command_buffer.render_time_taken_us = end_time - start_time;
+-                }
+-            }
++            RenderCommandLists(true, stop_token);
+             mailbox.Send(Direction::Host, Message::RenderResponse);
+         } break;
+         default:
+diff --git a/src/audio_core/adsp/apps/audio_renderer/audio_renderer.h b/src/audio_core/adsp/apps/audio_renderer/audio_renderer.h
+--- a/src/audio_core/adsp/apps/audio_renderer/audio_renderer.h
++++ b/src/audio_core/adsp/apps/audio_renderer/audio_renderer.h
+@@ -69,6 +69,10 @@
+     void Stop();
+ 
+     void Signal();
++#ifdef CHIMERA
++    /// Chimera: one render now, on the calling thread (there is no DSP thread)
++    void RenderOnce();
++#endif
+     void Wait();
+ 
+     void Send(Direction dir, u32 message);
+@@ -86,6 +90,8 @@
+      * Main AudioRenderer thread, responsible for processing the command lists.
+      */
+     void Main(std::stop_token stop_token);
++    void RenderCommandLists(bool wait_free_space, std::stop_token stop_token);
++
+ 
+     /**
+      * Creates the streams which will receive the processed samples.
+diff --git a/src/audio_core/audio_core.cpp b/src/audio_core/audio_core.cpp
+--- a/src/audio_core/audio_core.cpp
++++ b/src/audio_core/audio_core.cpp
+@@ -12,7 +12,11 @@
+ namespace AudioCore {
+ 
+ AudioCore::AudioCore(Core::System& system) {
++#ifdef CHIMERA
++    audio_manager.emplace(system);
++#else
+     audio_manager.emplace();
++#endif
+     CreateSinks();
+     // Must be created after the sinks
+     adsp.emplace(system, *output_sink);
+diff --git a/src/audio_core/audio_manager.cpp b/src/audio_core/audio_manager.cpp
+--- a/src/audio_core/audio_manager.cpp
++++ b/src/audio_core/audio_manager.cpp
+@@ -7,10 +7,66 @@
+ #include "audio_core/audio_manager.h"
+ #include "common/thread.h"
+ #include "core/core.h"
++#include "core/core_timing.h"
+ #include "core/hle/service/audio/errors.h"
+ 
+ namespace AudioCore {
+ 
++#ifdef CHIMERA
++// Chimera: no thread. A buffer event is run by a CoreTiming event at the
++// machine's present time, on the thread the machine runs on.
++AudioManager::AudioManager(Core::System& system_) : system{&system_} {
++    dispatch_event = Core::Timing::CreateEvent(
++        "ChimeraAudioManager",
++        [this](s64, std::chrono::nanoseconds) -> std::optional<std::chrono::nanoseconds> {
++            dispatch_scheduled = false;
++            for (size_t i = 0; i < buffer_events.size(); i++) {
++                if (pending[i]) {
++                    pending[i] = false;
++                    if (buffer_events[i]) {
++                        buffer_events[i]();
++                    }
++                }
++            }
++            return std::nullopt;
++        });
++}
++
++void AudioManager::Shutdown() {
++    system->CoreTiming().UnscheduleEvent(dispatch_event);
++}
++
++Result AudioManager::SetOutManager(BufferEventFunc buffer_func) {
++    const auto index{events.GetManagerIndex(Event::Type::AudioOutManager)};
++    if (buffer_events[index] == nullptr) {
++        buffer_events[index] = std::move(buffer_func);
++        needs_update = true;
++        SetEvent(Event::Type::AudioOutManager, true);
++    }
++    return ResultSuccess;
++}
++
++Result AudioManager::SetInManager(BufferEventFunc buffer_func) {
++    const auto index{events.GetManagerIndex(Event::Type::AudioInManager)};
++    if (buffer_events[index] == nullptr) {
++        buffer_events[index] = std::move(buffer_func);
++        needs_update = true;
++        SetEvent(Event::Type::AudioInManager, true);
++    }
++    return ResultSuccess;
++}
++
++void AudioManager::SetEvent(const Event::Type type, const bool signalled) {
++    if (!signalled) {
++        return;
++    }
++    pending[events.GetManagerIndex(type)] = true;
++    if (!dispatch_scheduled) {
++        dispatch_scheduled = true;
++        system->CoreTiming().ScheduleEvent(std::chrono::nanoseconds(0), dispatch_event);
++    }
++}
++#else
+ AudioManager::AudioManager() {
+     thread = std::jthread([this](std::stop_token stop_token) {
+         Common::SetCurrentThreadName("AudioManager");
+@@ -73,5 +129,6 @@
+ void AudioManager::SetEvent(const Event::Type type, const bool signalled) {
+     events.SetAudioEvent(type, signalled);
+ }
++#endif
+ 
+ } // namespace AudioCore
+diff --git a/src/audio_core/audio_manager.h b/src/audio_core/audio_manager.h
+--- a/src/audio_core/audio_manager.h
++++ b/src/audio_core/audio_manager.h
+@@ -13,6 +13,16 @@
+ #include <thread>
+ 
+ #include "common/polyfill_thread.h"
++#ifdef CHIMERA
++#include <memory>
++
++namespace Core {
++class System;
++namespace Timing {
++struct EventType;
++}
++} // namespace Core
++#endif
+ 
+ #include "audio_core/audio_event.h"
+ 
+@@ -37,7 +47,13 @@
+     using BufferEventFunc = std::function<void()>;
+ 
+ public:
++#ifdef CHIMERA
++    // Chimera: no thread. A buffer event is run by a CoreTiming event at the
++    // machine's present time, on the thread the machine runs on.
++    explicit AudioManager(Core::System& system);
++#else
+     explicit AudioManager();
++#endif
+ 
+     /**
+      * Shutdown the audio manager.
+@@ -79,6 +95,12 @@
+     std::mutex lock{};
+     /// Main thread for waiting and callbacks
+     std::jthread thread;
++#ifdef CHIMERA
++    Core::System* system{};
++    std::shared_ptr<Core::Timing::EventType> dispatch_event;
++    std::array<bool, 3> pending{};
++    bool dispatch_scheduled{};
++#endif
+ };
+ 
+ } // namespace AudioCore
+diff --git a/src/audio_core/renderer/system_manager.cpp b/src/audio_core/renderer/system_manager.cpp
+--- a/src/audio_core/renderer/system_manager.cpp
++++ b/src/audio_core/renderer/system_manager.cpp
+@@ -26,6 +26,26 @@
+     if (!active) {
+         active = true;
+         audio_renderer.Start();
++#ifdef CHIMERA
++        // Chimera: the renderer's 5 ms period is the machine's, not the
++        // host sink's appetite: a CoreTiming event sends each system's
++        // commands and renders them where it stands.
++        render_event = Core::Timing::CreateEvent(
++            "ChimeraAudioRender",
++            [this](s64, std::chrono::nanoseconds) -> std::optional<std::chrono::nanoseconds> {
++                {
++                    std::scoped_lock l{mutex1};
++                    for (auto system : systems)
++                        system->SendCommandToDsp();
++                }
++                audio_renderer.Signal();
++                audio_renderer.RenderOnce();
++                return std::nullopt;
++            });
++        core.CoreTiming().ScheduleLoopingEvent(std::chrono::milliseconds(5),
++                                               std::chrono::milliseconds(5), render_event);
++        return;
++#endif
+         thread = std::jthread([this](std::stop_token stop_token) {
+             Common::SetCurrentThreadName("AudioRenderSystemManager");
+             Common::SetCurrentThreadPriority(Common::ThreadPriority::High);
+@@ -45,6 +65,11 @@
+ void SystemManager::Stop() {
+     if (active) {
+         active = false;
++#ifdef CHIMERA
++        core.CoreTiming().UnscheduleEvent(render_event);
++        audio_renderer.Stop();
++        return;
++#endif
+         thread.request_stop();
+         thread.join();
+         audio_renderer.Stop();
+diff --git a/src/audio_core/renderer/system_manager.h b/src/audio_core/renderer/system_manager.h
+--- a/src/audio_core/renderer/system_manager.h
++++ b/src/audio_core/renderer/system_manager.h
+@@ -75,6 +75,9 @@
+     std::list<System*> systems{};
+     /// Main worker thread for generating command lists
+     std::jthread thread;
++#ifdef CHIMERA
++    std::shared_ptr<Core::Timing::EventType> render_event;
++#endif
+     /// Mutex for the systems
+     std::mutex mutex1{};
+     /// Mutex for adding/removing systems
+diff --git a/src/audio_core/sink/chimera_sink.h b/src/audio_core/sink/chimera_sink.h
+new file mode 100644
+--- /dev/null
++++ b/src/audio_core/sink/chimera_sink.h
+@@ -0,0 +1,151 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++// Chimera: the machine's sound, taken by the frontend a frame at a time.
++// Where a host sink has a device's callback asking for samples at the host's
++// pace, this one has a CoreTiming event every 5 ms of machine time that pulls
++// 240 frames from every stream and mixes them. Everything upstream of it
++// (the renderer's streams, audio out's buffers and their release events) is
++// then paced by the machine's own clock.
++
++#pragma once
++
++#include <algorithm>
++#include <chrono>
++#include <memory>
++#include <optional>
++#include <string>
++#include <string_view>
++#include <vector>
++
++#include "audio_core/sink/sink.h"
++#include "audio_core/sink/sink_stream.h"
++#include "core/core.h"
++#include "core/core_timing.h"
++
++namespace AudioCore::Sink {
++
++class ChimeraSinkStream final : public SinkStream {
++public:
++    explicit ChimeraSinkStream(Core::System& system_, StreamType type_, u32 system_channels_,
++                               const std::string& name_)
++        : SinkStream{system_, type_} {
++        system_channels = system_channels_;
++        device_channels = 2;
++        name = name_;
++    }
++    ~ChimeraSinkStream() override = default;
++
++    void Start(bool = false) override {
++        paused = false;
++    }
++    void Stop() override {
++        paused = true;
++        SignalPause();
++    }
++    StreamType Type() const {
++        return type;
++    }
++};
++
++class ChimeraSink final : public Sink {
++public:
++    // frames pulled at each event: 5 ms at 48 kHz
++    static constexpr size_t PullFrames = 240;
++
++    explicit ChimeraSink(std::string_view) {
++        device_channels = 2;
++    }
++    ~ChimeraSink() override {
++        if (system && pull_event) {
++            system->CoreTiming().UnscheduleEvent(pull_event);
++        }
++    }
++
++    SinkStream* AcquireSinkStream(Core::System& system_, u32 system_channels_,
++                                  const std::string& name, StreamType type) override {
++        system_channels = system_channels_;
++        auto& stream = streams.emplace_back(
++            std::make_unique<ChimeraSinkStream>(system_, type, system_channels_, name));
++        stream->SetDeviceVolume(device_volume);
++        if (!pull_event) {
++            system = &system_;
++            pull_event = Core::Timing::CreateEvent(
++                "ChimeraAudioPull",
++                [this](s64, std::chrono::nanoseconds) -> std::optional<std::chrono::nanoseconds> {
++                    Pull();
++                    return std::nullopt;
++                });
++            system->CoreTiming().ScheduleLoopingEvent(std::chrono::milliseconds(5),
++                                                      std::chrono::milliseconds(5), pull_event);
++        }
++        return stream.get();
++    }
++
++    void CloseStream(SinkStream* stream) override {
++        std::erase_if(streams, [stream](const auto& s) { return s.get() == stream; });
++    }
++    void CloseStreams() override {
++        streams.clear();
++    }
++    f32 GetDeviceVolume() const override {
++        return device_volume;
++    }
++    void SetDeviceVolume(f32 volume) override {
++        device_volume = volume;
++        for (auto& stream : streams) {
++            stream->SetDeviceVolume(volume);
++        }
++    }
++    void SetSystemVolume(f32 volume) override {
++        for (auto& stream : streams) {
++            stream->SetSystemVolume(volume);
++        }
++    }
++
++    /// Stereo pairs mixed since the last call (interleaved), and forgets them.
++    std::vector<s16> Take() {
++        std::vector<s16> out;
++        out.swap(output);
++        return out;
++    }
++
++private:
++    void Pull() {
++        mix.assign(PullFrames * 2, 0);
++        scratch.resize(PullFrames * 2);
++        for (auto& stream : streams) {
++            if (stream->IsPaused()) {
++                continue;
++            }
++            if (stream->Type() == StreamType::In) {
++                // no microphone: the machine records silence
++                std::fill(scratch.begin(), scratch.end(), s16{0});
++                stream->ProcessAudioIn(scratch, PullFrames);
++                continue;
++            }
++            stream->ProcessAudioOutAndRender(scratch, PullFrames);
++            for (size_t i = 0; i < mix.size(); i++) {
++                mix[i] += scratch[i];
++            }
++        }
++        const size_t at = output.size();
++        output.resize(at + mix.size());
++        for (size_t i = 0; i < mix.size(); i++) {
++            output[at + i] = static_cast<s16>(std::clamp<s32>(mix[i], -32768, 32767));
++        }
++        // nobody took it for a second (the frontend is not listening): keep
++        // the last second only
++        constexpr size_t Cap = 48000 * 2;
++        if (output.size() > Cap * 2) {
++            output.erase(output.begin(), output.end() - Cap);
++        }
++    }
++
++    Core::System* system{};
++    std::shared_ptr<Core::Timing::EventType> pull_event;
++    std::vector<std::unique_ptr<ChimeraSinkStream>> streams;
++    std::vector<s32> mix;
++    std::vector<s16> scratch;
++    std::vector<s16> output;
++};
++
++} // namespace AudioCore::Sink
+diff --git a/src/audio_core/sink/sink_details.cpp b/src/audio_core/sink/sink_details.cpp
+--- a/src/audio_core/sink/sink_details.cpp
++++ b/src/audio_core/sink/sink_details.cpp
+@@ -17,6 +17,9 @@
+ #include "audio_core/sink/sdl3_sink.h"
+ #endif
+ #include "audio_core/sink/null_sink.h"
++#ifdef CHIMERA
++#include "audio_core/sink/chimera_sink.h"
++#endif
+ #include "common/logging.h"
+ #include "common/settings_enums.h"
+ 
+@@ -139,7 +142,12 @@
+ }
+ 
+ std::unique_ptr<Sink> CreateSinkFromID(Settings::AudioEngine sink_id, std::string_view device_id) {
++#ifdef CHIMERA
++    // Chimera: one sink, whatever the setting says - the frontend's
++    return std::make_unique<ChimeraSink>(device_id);
++#else
+     return GetOutputSinkDetails(sink_id).factory(device_id);
++#endif
+ }
+ 
+ } // namespace AudioCore::Sink
+diff --git a/src/common/random.cpp b/src/common/random.cpp
+--- a/src/common/random.cpp
++++ b/src/common/random.cpp
+@@ -6,10 +6,27 @@
+ #include "common/random.h"
+ 
+ namespace Common::Random {
++#ifdef CHIMERA
++    // Chimera: the machine's randomness is its own, the same in every run -
++    // one generator with a fixed seed, asked in the machine's own order
++    // (everything that asks runs on the machine's timeline). The host's
++    // random device would give every run another address space layout.
++    struct MachineRandom {
++        std::mt19937 gen{0x43484d52u};
++        u32 operator()() noexcept {
++            return static_cast<u32>(gen());
++        }
++    };
++    [[nodiscard]] static MachineRandom& GetGlobalRandomDevice() noexcept {
++        static MachineRandom g_random{};
++        return g_random;
++    }
++#else
+     [[nodiscard]] static std::random_device& GetGlobalRandomDevice() noexcept {
+         static std::random_device g_random_device{};
+         return g_random_device;
+     }
++#endif
+     [[nodiscard]] u32 Random32(u32 seed) noexcept {
+         return GetGlobalRandomDevice()();
+     }
+diff --git a/src/core/core.cpp b/src/core/core.cpp
+--- a/src/core/core.cpp
++++ b/src/core/core.cpp
+@@ -198,10 +198,18 @@
+             time_offset = Settings::values.custom_rtc_offset.GetValue();
+         }
+ 
++#ifdef CHIMERA
++        // Chimera: the calendar starts where the setting says (custom_rtc is
++        // the date itself, not an offset from the host's), never at the
++        // host's date
++        const u64 new_time = static_cast<u64>(Settings::values.custom_rtc.GetValue());
++        (void)time_offset;
++#else
+         const auto posix_time = std::chrono::system_clock::now().time_since_epoch();
+         const u64 current_time =
+             +std::chrono::duration_cast<std::chrono::seconds>(posix_time).count();
+         const u64 new_time = current_time + time_offset;
++#endif
+ 
+         Service::PSC::Time::SystemClockContext context{};
+         settings_service->SetUserSystemClockContext(context);
+diff --git a/src/core/hle/kernel/kernel.cpp b/src/core/hle/kernel/kernel.cpp
+--- a/src/core/hle/kernel/kernel.cpp
++++ b/src/core/hle/kernel/kernel.cpp
+@@ -1137,6 +1137,26 @@
+     ASSERT(R_SUCCEEDED(thread->Run(*this)));
+ }
+ 
++#ifdef CHIMERA
++void KernelCore::RunOnGuestCoreThread(std::function<void()> func) {
++    constexpr s32 ServiceThreadPriority = 16;
++    constexpr s32 ServiceThreadCore = 3;
++
++    KProcess* process = GetCurrentProcessPointer(*this);
++    ASSERT(process != nullptr);
++
++    KScopedResourceReservation thread_reservation(*this, process, LimitableResource::ThreadCountMax);
++    ASSERT(thread_reservation.Succeeded());
++
++    KThread* thread = KThread::Create(*this);
++    ASSERT(R_SUCCEEDED(KThread::InitializeServiceThread(
++        System(), thread, std::move(func), ServiceThreadPriority, ServiceThreadCore, process)));
++    thread_reservation.Commit();
++    KThread::Register(*this, thread);
++    ASSERT(R_SUCCEEDED(thread->Run(*this)));
++}
++#endif
++
+ u32 KernelCore::GetCurrentHostThreadID() const {
+     return impl->GetCurrentHostThreadID();
+ }
+diff --git a/src/core/hle/kernel/kernel.h b/src/core/hle/kernel/kernel.h
+--- a/src/core/hle/kernel/kernel.h
++++ b/src/core/hle/kernel/kernel.h
+@@ -215,6 +215,13 @@
+ 
+     void RunOnGuestCoreProcess(std::string&& process_name, std::function<void()> func);
+ 
++#ifdef CHIMERA
++    /// Chimera: a thread of the emulator's own (a worker that waits on kernel
++    /// objects) as a guest thread of the current process, on the emulated
++    /// cores and so on the machine's timeline. It is never joined.
++    void RunOnGuestCoreThread(std::function<void()> func);
++#endif
++
+     std::jthread RunOnHostCoreProcess(std::string&& process_name, std::function<void()> func);
+ 
+     std::jthread RunOnHostCoreThread(std::string&& thread_name, std::function<void()> func);
+diff --git a/src/core/hle/service/am/event_observer.cpp b/src/core/hle/service/am/event_observer.cpp
+--- a/src/core/hle/service/am/event_observer.cpp
++++ b/src/core/hle/service/am/event_observer.cpp
+@@ -26,6 +26,17 @@
+     m_window_system.SetEventObserver(this);
+     m_wakeup_holder.SetUserData(static_cast<uintptr_t>(UserDataTag::WakeupEvent));
+     m_wakeup_holder.LinkToMultiWait(std::addressof(m_multi_wait));
++#ifdef CHIMERA
++    // Chimera: a guest thread of am's process, on the machine's timeline
++    m_system.Kernel().RunOnGuestCoreThread([this, stop_token = m_stop.get_token()] {
++        while (!stop_token.stop_requested()) {
++            auto* signaled_holder = this->WaitSignaled(stop_token);
++            if (!signaled_holder)
++                break;
++            this->Process(signaled_holder);
++        }
++    });
++#else
+     m_thread = std::jthread([this](std::stop_token stop_token) {
+         Common::SetCurrentThreadName("am:EventObserver");
+         while (!stop_token.stop_requested()) {
+@@ -35,10 +46,15 @@
+             this->Process(signaled_holder);
+         }
+     });
++#endif
+ }
+ 
+ EventObserver::~EventObserver() {
+     // Signal thread and wait for processing to finish.
++#ifdef CHIMERA
++    m_stop.request_stop();
++    m_wakeup_event.Signal(m_system.Kernel());
++#endif
+     if (m_thread.joinable()) {
+         // Signal thread and wait for processing to finish.
+         m_thread.request_stop();
+diff --git a/src/core/hle/service/am/event_observer.h b/src/core/hle/service/am/event_observer.h
+--- a/src/core/hle/service/am/event_observer.h
++++ b/src/core/hle/service/am/event_observer.h
+@@ -63,6 +63,9 @@
+ 
+     // Processing thread.
+     std::jthread m_thread{};
++#ifdef CHIMERA
++    std::stop_source m_stop{};
++#endif
+ };
+ 
+ } // namespace Service::AM
+diff --git a/src/core/hle/service/glue/time/standard_steady_clock_resource.cpp b/src/core/hle/service/glue/time/standard_steady_clock_resource.cpp
+--- a/src/core/hle/service/glue/time/standard_steady_clock_resource.cpp
++++ b/src/core/hle/service/glue/time/standard_steady_clock_resource.cpp
+@@ -19,6 +19,15 @@
+ [[maybe_unused]] constexpr u32 Max77620RtcSession = 0x3B000001;
+ 
+ Result GetTimeInSeconds(Core::System& system, s64& out_time_s) {
++#ifdef CHIMERA
++    // Chimera: the machine's calendar - the date it started at (custom_rtc)
++    // carried forward by its own clock, never the host's date
++    out_time_s = Settings::values.custom_rtc.GetValue() +
++                 std::chrono::duration_cast<std::chrono::seconds>(
++                     system.CoreTiming().GetGlobalTimeNs())
++                     .count();
++    R_SUCCEED();
++#endif
+     out_time_s = std::chrono::duration_cast<std::chrono::seconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count();
+diff --git a/src/core/hle/service/glue/time/worker.cpp b/src/core/hle/service/glue/time/worker.cpp
+--- a/src/core/hle/service/glue/time/worker.cpp
++++ b/src/core/hle/service/glue/time/worker.cpp
+@@ -52,9 +52,14 @@
+     m_ephemeral_clock_event->Signal(m_system.Kernel());
+     std::this_thread::sleep_for(std::chrono::milliseconds(16));
+ 
++#ifdef CHIMERA
++    m_stop.request_stop();
++    m_event->Signal(m_system.Kernel());
++#else
+     m_thread.request_stop();
+     m_event->Signal(m_system.Kernel());
+     m_thread.join();
++#endif
+ 
+     m_ctx.CloseEvent(m_event);
+     m_system.CoreTiming().UnscheduleEvent(m_timer_steady_clock_timing_event);
+@@ -122,12 +127,20 @@
+ }
+ 
+ void TimeWorker::StartThread() {
++#ifdef CHIMERA
++    // Chimera: a guest thread of glue's process, on the machine's timeline
++    m_system.Kernel().RunOnGuestCoreThread([this, stop_token = m_stop.get_token()] { this->ThreadFunc(stop_token); });
++#else
+     m_thread = std::jthread(std::bind_front(&TimeWorker::ThreadFunc, this));
++#endif
+ }
+ 
+ void TimeWorker::ThreadFunc(std::stop_token stop_token) {
++#ifndef CHIMERA
++    // (under Chimera this is a guest thread: the host thread is the CPU's)
+     Common::SetCurrentThreadName("TimeWorker");
+     Common::SetCurrentThreadPriority(Common::ThreadPriority::Low);
++#endif
+ 
+     while (!stop_token.stop_requested()) {
+         enum class EventType : s32 {
+diff --git a/src/core/hle/service/glue/time/worker.h b/src/core/hle/service/glue/time/worker.h
+--- a/src/core/hle/service/glue/time/worker.h
++++ b/src/core/hle/service/glue/time/worker.h
+@@ -47,6 +47,9 @@
+     std::shared_ptr<Service::Set::ISystemSettingsServer> m_set_sys;
+ 
+     std::jthread m_thread;
++#ifdef CHIMERA
++    std::stop_source m_stop;
++#endif
+     Kernel::KEvent* m_event{};
+     std::shared_ptr<Service::PSC::Time::ServiceManager> m_time_m;
+     std::shared_ptr<Service::PSC::Time::StaticService> m_time_sm;
+diff --git a/src/core/hle/service/server_manager.cpp b/src/core/hle/service/server_manager.cpp
+--- a/src/core/hle/service/server_manager.cpp
++++ b/src/core/hle/service/server_manager.cpp
+@@ -246,6 +246,11 @@
+ }
+ 
+ void ServerManager::StartAdditionalHostThreads(const char* name, size_t num_threads) {
++#ifdef CHIMERA
++    // Chimera: no host thread serves the machine; the service's own guest
++    // thread takes every request in turn
++    return;
++#endif
+     for (size_t i = 0; i < num_threads; i++) {
+         auto thread_name = fmt::format("{}:{}", name, i + 1);
+         m_threads.emplace_back(m_system.Kernel().RunOnHostCoreThread(
+diff --git a/src/core/hle/service/services.cpp b/src/core/hle/service/services.cpp
+--- a/src/core/hle/service/services.cpp
++++ b/src/core/hle/service/services.cpp
+@@ -95,8 +95,16 @@
+         {"nvservices", &Nvidia::LoopProcess},
+         {"bsdsocket",  &Sockets::LoopProcess},
+     })
++#ifdef CHIMERA
++        // Chimera: every service is a guest thread on the emulated cores,
++        // scheduled by the HLE kernel on the machine's own timeline. A host
++        // thread answers when the host's scheduler lets it.
++        kernel.RunOnGuestCoreProcess(std::string(e.first), [&system, f = e.second] { f(system); });
++    kernel.RunOnGuestCoreProcess("vi",         [&, token] { VI::LoopProcess(system, token); });
++#else
+         kernel.RunOnHostCoreProcess(std::string(e.first), [&system, f = e.second] { f(system); }).detach();
+     kernel.RunOnHostCoreProcess("vi",         [&, token] { VI::LoopProcess(system, token); }).detach();
++#endif
+     // Avoid cold clones of lambdas -- succintly
+     for (auto const& e : std::vector<std::pair<std::string_view, void (*)(Core::System&)>>{
+         {"sm",         &SM::LoopProcess},
+diff --git a/src/core/launch_timestamp_cache.cpp b/src/core/launch_timestamp_cache.cpp
+--- a/src/core/launch_timestamp_cache.cpp
++++ b/src/core/launch_timestamp_cache.cpp
+@@ -2,6 +2,7 @@
+ // SPDX-License-Identifier: GPL-3.0-or-later
+ 
+ #include "core/launch_timestamp_cache.h"
++#include "common/settings.h"
+ 
+ #include <filesystem>
+ #include <fstream>
+@@ -123,7 +124,12 @@
+ }
+ 
+ s64 NowSeconds() {
++#ifdef CHIMERA
++    // Chimera: the date the machine starts at, not the host's
++    return Settings::values.custom_rtc.GetValue();
++#else
+     return std::time(nullptr);
++#endif
+ }
+ 
+ } // namespace

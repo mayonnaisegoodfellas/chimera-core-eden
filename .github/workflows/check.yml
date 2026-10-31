@@ -1,0 +1,32 @@
+# The cheap check, on every push: the patch series applies to the pinned
+# upstream and the package's declarations parse. It builds nothing; chimera.yml
+# is the workflow that builds both flavours and the package and tests them.
+name: check
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - name: The pinned upstream (no nested submodules, nothing is built)
+        run: git submodule update --init --depth 1 extern/eden
+      - name: The patch series applies
+        run: sh waterbox/apply-patches.sh
+      - name: The package's declarations and language tables parse
+        run: |
+          python3 - <<'PY'
+          import glob, json
+          for name in ("waterbox.config", "file_slots.json", "default_keybinds.json", "package-licenses.json"):
+              json.load(open("waterbox/" + name))
+              print("ok", name)
+          tables = sorted(glob.glob("waterbox/languages/*.json"))
+          for path in tables:
+              json.load(open(path, encoding="utf-8"))
+          print("ok", len(tables), "language tables")
+          PY
+      - name: Proper nouns stay as they are in every language
+        run: python3 -I waterbox/tests/check-names.py waterbox/languages

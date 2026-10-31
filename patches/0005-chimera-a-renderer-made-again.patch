@@ -1,0 +1,357 @@
+diff --git a/src/common/host_memory.cpp b/src/common/host_memory.cpp
+--- a/src/common/host_memory.cpp
++++ b/src/common/host_memory.cpp
+@@ -6,6 +6,7 @@
+ 
+ #ifdef _WIN32
+ 
++#include <cstring>
+ #include <iterator>
+ #include "common/container/unordered_map.h"
+ #include <boost/icl/separate_interval_set.hpp>
+@@ -795,6 +796,25 @@
+ }
+ 
+ void HostMemory::ClearBackingRegion(size_t physical_offset, size_t length, u32 fill_value) {
++#ifdef CHIMERA
++    // Chimera: a page that already holds the value is not written again.
++    // Zeros over zeros change nothing the machine can see, but the sandbox
++    // counts a written page as changed: the game's heap, cleared when it is
++    // handed out, was 3.2 GiB of zeros in every savestate.
++    {
++        u8* const base = backing_base + physical_offset;
++        const u8 fill = static_cast<u8>(fill_value);
++        for (size_t at = 0; at < length;) {
++            const size_t n = (std::min)(size_t{0x1000} - ((physical_offset + at) & 0xfff), length - at);
++            u8* const p = base + at;
++            if (p[0] != fill || std::memcmp(p, p + 1, n - 1) != 0) {
++                std::memset(p, fill, n);
++            }
++            at += n;
++        }
++        return;
++    }
++#endif
+     std::memset(backing_base + physical_offset, fill_value, length);
+ }
+ 
+diff --git a/src/core/device_memory_manager.h b/src/core/device_memory_manager.h
+--- a/src/core/device_memory_manager.h
++++ b/src/core/device_memory_manager.h
+@@ -123,6 +123,14 @@
+ 
+     void UpdatePagesCachedCount(DAddr addr, size_t size, s32 delta);
+ 
++#ifdef CHIMERA
++    /// Chimera: every page's cached count back to zero, and the CPU's page
++    /// table told so. The counts belong to the renderer's caches; when the
++    /// renderer is rebuilt (its GL context gone with a state load) the new
++    /// caches hold nothing.
++    void ChimeraResetCaching();
++#endif
++
+     // New batch API to update multiple ranges with a single lock acquisition.
+     void UpdatePagesCachedBatch(std::span<const std::pair<DAddr, size_t>> ranges, s32 delta);
+ 
+diff --git a/src/core/device_memory_manager.inc b/src/core/device_memory_manager.inc
+--- a/src/core/device_memory_manager.inc
++++ b/src/core/device_memory_manager.inc
+@@ -614,6 +614,29 @@
+     release_pending();
+ }
+ 
++#ifdef CHIMERA
++template <typename Traits>
++void DeviceMemoryManager<Traits>::ChimeraResetCaching() {
++    const auto MarkRegionCaching = &DeviceMemoryManager<Traits>::DeviceMethods::MarkRegionCaching;
++    const size_t pages = num_counter_entries * subentries;
++    for (size_t page = 0; page < pages; page++) {
++        CounterAtomicType& count = cached_pages->at(page >> subentries_shift).Count(page);
++        if (count.load(std::memory_order::relaxed) == 0) {
++            continue;
++        }
++        count.store(0, std::memory_order::relaxed);
++        auto [asid, vaddress] = ExtractCPUBacking(page);
++        if ((vaddress >> Memory::YUZU_PAGEBITS) == 0) {
++            continue;
++        }
++        if (auto* memory = registered_processes[asid.id]; memory != nullptr) {
++            MarkRegionCaching(memory, vaddress & ~VAddr{Memory::YUZU_PAGESIZE - 1},
++                              Memory::YUZU_PAGESIZE, false);
++        }
++    }
++}
++#endif
++
+ template <typename Traits>
+ void DeviceMemoryManager<Traits>::UpdatePagesCachedCount(DAddr addr, size_t size, s32 delta) {
+     Common::ScopedRangeLock lk(counter_guard, addr, size);
+diff --git a/src/core/hle/kernel/k_memory_manager.cpp b/src/core/hle/kernel/k_memory_manager.cpp
+--- a/src/core/hle/kernel/k_memory_manager.cpp
++++ b/src/core/hle/kernel/k_memory_manager.cpp
+@@ -5,6 +5,7 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include <algorithm>
++#include <cstring>
+ 
+ #include "common/alignment.h"
+ #include "common/assert.h"
+@@ -527,7 +528,17 @@
+ 
+             // Fill the page.
+             auto* ptr = device_memory.GetPointer<u8>(m_heap.GetAddress());
++#ifdef CHIMERA
++            // (Chimera: not written again when it already holds the pattern;
++            // see HostMemory::ClearBackingRegion)
++            u8* const page = ptr + offset * PageSize;
++            const u8 fill = static_cast<u8>(fill_pattern);
++            if (page[0] != fill || std::memcmp(page, page + 1, PageSize - 1) != 0) {
++                std::memset(page, fill, PageSize);
++            }
++#else
+             std::memset(ptr + offset * PageSize, fill_pattern, PageSize);
++#endif
+         }
+ 
+         offset++;
+diff --git a/src/video_core/engines/maxwell_3d.cpp b/src/video_core/engines/maxwell_3d.cpp
+--- a/src/video_core/engines/maxwell_3d.cpp
++++ b/src/video_core/engines/maxwell_3d.cpp
+@@ -49,6 +49,19 @@
+     upload_state.BindRasterizer(rasterizer_);
+ }
+ 
++#ifdef CHIMERA
++void Maxwell3D::ChimeraReplayBindings() {
++    for (size_t stage = 0; stage < Regs::MaxShaderStage; stage++) {
++        for (u32 slot = 0; slot < Regs::MaxConstBuffers; slot++) {
++            const auto& buffer = state.shader_stages[stage].const_buffers[slot];
++            if (buffer.enabled) {
++                rasterizer->BindGraphicsUniformBuffer(stage, slot, buffer.address, buffer.size);
++            }
++        }
++    }
++}
++#endif
++
+ void Maxwell3D::InitializeRegisterDefaults() {
+     // Initializes registers to their default values - what games expect them to be at boot. This is
+     // for certain registers that may not be explicitly set by games.
+diff --git a/src/video_core/engines/maxwell_3d.h b/src/video_core/engines/maxwell_3d.h
+--- a/src/video_core/engines/maxwell_3d.h
++++ b/src/video_core/engines/maxwell_3d.h
+@@ -61,6 +61,12 @@
+     /// Binds a rasterizer to this engine.
+     void BindRasterizer(VideoCore::RasterizerInterface* rasterizer);
+ 
++#ifdef CHIMERA
++    /// What this engine told the rasterizer once and the rasterizer kept (the
++    /// constant buffer bindings), told again to a new rasterizer.
++    void ChimeraReplayBindings();
++#endif
++
+     /// Register structure of the Maxwell3D engine.
+     struct Regs {
+         static constexpr std::size_t NUM_REGS = 0xE00;
+diff --git a/src/video_core/gpu.cpp b/src/video_core/gpu.cpp
+--- a/src/video_core/gpu.cpp
++++ b/src/video_core/gpu.cpp
+@@ -106,6 +106,43 @@
+         system.Host1x().gmmu_manager.BindRasterizer(renderer->ReadRasterizer());
+     }
+ 
++#ifdef CHIMERA
++    void ChimeraQuiesce() {
++        auto* const rasterizer = renderer->ReadRasterizer();
++        rasterizer->ReleaseFences(true);
++        // (from the first page up: address 0 is "no address" to the caches)
++        constexpr u64 first = 0x1000;
++        constexpr u64 all = (1ULL << Tegra::MaxwellDeviceMemoryManager::AS_BITS) - first;
++        rasterizer->FlushRegion(first, all);
++        rasterizer->ReleaseFences(true);
++    }
++
++    void ChimeraDropRenderer() {
++        renderer.reset();
++    }
++
++    void ChimeraAdoptRenderer(std::unique_ptr<VideoCore::RendererBase> renderer_) {
++        BindRenderer(std::move(renderer_));
++        auto* const rasterizer = renderer->ReadRasterizer();
++        system.Host1x().memory_manager.ChimeraResetCaching();
++        gpu_thread.StartThread(*renderer, renderer->Context(), scheduler);
++        for (auto& [id, channel] : channels) {
++            if (!channel->initialized) {
++                continue;
++            }
++            channel->BindRasterizer(rasterizer);
++            rasterizer->InitializeChannel(*channel);
++            // the constant buffers a channel bound are kept by the rasterizer,
++            // per channel, and the guest binds them once
++            rasterizer->BindChannel(*channel);
++            channel->payload->maxwell_3d.ChimeraReplayBindings();
++        }
++        if (bound_channel >= 0 && current_channel != nullptr) {
++            rasterizer->BindChannel(*current_channel);
++        }
++    }
++#endif
++
+     /// Flush all current written commands into the host GPU for execution.
+     void FlushCommands() {
+         renderer->ReadRasterizer()->FlushCommands();
+@@ -377,6 +414,20 @@
+     impl->BindRenderer(std::move(renderer));
+ }
+ 
++#ifdef CHIMERA
++void GPU::ChimeraQuiesce() {
++    impl->ChimeraQuiesce();
++}
++
++void GPU::ChimeraDropRenderer() {
++    impl->ChimeraDropRenderer();
++}
++
++void GPU::ChimeraAdoptRenderer(std::unique_ptr<VideoCore::RendererBase> renderer) {
++    impl->ChimeraAdoptRenderer(std::move(renderer));
++}
++#endif
++
+ void GPU::FlushCommands() {
+     impl->FlushCommands();
+ }
+diff --git a/src/video_core/gpu.h b/src/video_core/gpu.h
+--- a/src/video_core/gpu.h
++++ b/src/video_core/gpu.h
+@@ -143,6 +143,19 @@
+     /// Binds a renderer to the GPU.
+     void BindRenderer(std::unique_ptr<VideoCore::RendererBase> renderer);
+ 
++#ifdef CHIMERA
++    /// Chimera: at a frame's end nothing may be left on the host's GPU that
++    /// the machine would miss - a savestate is the machine's memory and no
++    /// more. Every fence is waited for and what stood behind it is done;
++    /// every picture and buffer the GPU wrote is written to guest memory.
++    void ChimeraQuiesce();
++    /// Chimera: the renderer of a GL context that is gone (a state was
++    /// loaded) is dropped, and a new one takes its place, bound to every
++    /// channel; its caches fill again from guest memory.
++    void ChimeraDropRenderer();
++    void ChimeraAdoptRenderer(std::unique_ptr<VideoCore::RendererBase> renderer);
++#endif
++
+     /// Flush all current written commands into the host GPU for execution.
+     void FlushCommands();
+     /// Synchronizes CPU writes with Host GPU memory.
+diff --git a/src/video_core/renderer_opengl/gl_buffer_cache.cpp b/src/video_core/renderer_opengl/gl_buffer_cache.cpp
+--- a/src/video_core/renderer_opengl/gl_buffer_cache.cpp
++++ b/src/video_core/renderer_opengl/gl_buffer_cache.cpp
+@@ -211,8 +211,15 @@
+ }
+ 
+ void BufferCacheRuntime::ClearBuffer(Buffer& dest_buffer, u32 offset, size_t size, u32 value) {
++#ifdef CHIMERA
++    // (an integer format is cleared with an integer one: GL_RED is refused,
++    // and the buffer kept whatever it held)
++    glClearNamedBufferSubData(dest_buffer.Handle(), GL_R32UI, static_cast<GLintptr>(offset),
++                              static_cast<GLsizeiptr>(size), GL_RED_INTEGER, GL_UNSIGNED_INT, &value);
++#else
+     glClearNamedBufferSubData(dest_buffer.Handle(), GL_R32UI, static_cast<GLintptr>(offset),
+                               static_cast<GLsizeiptr>(size), GL_RED, GL_UNSIGNED_INT, &value);
++#endif
+ }
+ 
+ void BufferCacheRuntime::BindIndexBuffer(Buffer& buffer, u32 offset, u32 size) {
+diff --git a/src/video_core/renderer_opengl/gl_resource_manager.cpp b/src/video_core/renderer_opengl/gl_resource_manager.cpp
+--- a/src/video_core/renderer_opengl/gl_resource_manager.cpp
++++ b/src/video_core/renderer_opengl/gl_resource_manager.cpp
+@@ -134,9 +134,22 @@
+     handle = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+ }
+ 
++#ifdef CHIMERA
++bool g_chimera_forget_syncs = false;
++#endif
++
+ void OGLSync::Release() {
+     if (handle == 0)
+         return;
++#ifdef CHIMERA
++    // Chimera: a sync object is a pointer into the driver's memory. One that
++    // came back with a savestate belongs to a context that is gone, and
++    // handing it to the driver is a wild pointer: it is forgotten.
++    if (g_chimera_forget_syncs) {
++        handle = 0;
++        return;
++    }
++#endif
+ 
+     // Don't profile here, this one is expected to happen ingame.
+     glDeleteSync(handle);
+diff --git a/src/video_core/renderer_opengl/gl_resource_manager.h b/src/video_core/renderer_opengl/gl_resource_manager.h
+--- a/src/video_core/renderer_opengl/gl_resource_manager.h
++++ b/src/video_core/renderer_opengl/gl_resource_manager.h
+@@ -10,6 +10,12 @@
+ 
+ namespace OpenGL {
+ 
++#ifdef CHIMERA
++/// Chimera: set while a renderer whose context is gone is being dropped
++/// (OGLSync::Release).
++extern bool g_chimera_forget_syncs;
++#endif
++
+ class OGLRenderbuffer final {
+ public:
+     YUZU_NON_COPYABLE(OGLRenderbuffer);
+diff --git a/src/video_core/video_core.cpp b/src/video_core/video_core.cpp
+--- a/src/video_core/video_core.cpp
++++ b/src/video_core/video_core.cpp
+@@ -16,6 +16,7 @@
+ #include "video_core/renderer_base.h"
+ #include "video_core/renderer_null/renderer_null.h"
+ #ifdef HAS_OPENGL
++#include "video_core/renderer_opengl/gl_resource_manager.h"
+ #include "video_core/renderer_opengl/renderer_opengl.h"
+ #endif
+ #include "video_core/renderer_vulkan/renderer_vulkan.h"
+@@ -65,4 +66,21 @@
+     }
+ }
+ 
++#ifdef CHIMERA
++void ChimeraRebuildRenderer(Core::System& system, Core::Frontend::EmuWindow& emu_window, void (*between)()) {
++    Tegra::GPU& gpu = system.GPU();
++#ifdef HAS_OPENGL
++    OpenGL::g_chimera_forget_syncs = true;
++#endif
++    gpu.ChimeraDropRenderer();
++#ifdef HAS_OPENGL
++    OpenGL::g_chimera_forget_syncs = false;
++#endif
++    if (between) {
++        between();
++    }
++    gpu.ChimeraAdoptRenderer(CreateRenderer(system, emu_window, gpu, emu_window.CreateSharedContext()));
++}
++#endif
++
+ } // namespace VideoCore
+diff --git a/src/video_core/video_core.h b/src/video_core/video_core.h
+--- a/src/video_core/video_core.h
++++ b/src/video_core/video_core.h
+@@ -26,4 +26,12 @@
+ class RendererBase;
+ void CreateGPU(std::optional<Tegra::GPU>& gpu, Core::Frontend::EmuWindow& emu_window, Core::System& system);
+ 
++#ifdef CHIMERA
++/// Chimera: the GL context the renderer's objects were made in is gone (a
++/// savestate was loaded): the renderer is dropped - `between` runs when it
++/// is gone and before the new one exists, for the frontend's own objects -
++/// and made again. Called on the thread that holds the context.
++void ChimeraRebuildRenderer(Core::System& system, Core::Frontend::EmuWindow& emu_window, void (*between)());
++#endif
++
+ } // namespace VideoCore

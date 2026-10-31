@@ -1,0 +1,205 @@
+diff --git a/src/core/core.cpp b/src/core/core.cpp
+--- a/src/core/core.cpp
++++ b/src/core/core.cpp
+@@ -31,6 +31,8 @@
+ #include "core/file_sys/vfs/vfs_concat.h"
+ #include "core/file_sys/vfs/vfs_real.h"
+ #include "core/gpu_dirty_memory_manager.h"
++#include "core/hle/kernel/k_light_condition_variable.h"
++#include "core/hle/kernel/k_light_lock.h"
+ #include "core/hle/kernel/k_memory_manager.h"
+ #include "core/hle/kernel/k_process.h"
+ #include "core/hle/kernel/k_resource_limit.h"
+@@ -544,6 +546,36 @@
+     Kernel::Svc::SleepThread(*g_chimera_system, nanoseconds);
+ }
+ 
++struct ChimeraGuestCondition::Impl {
++    explicit Impl(Kernel::KernelCore& kernel) : lock{kernel}, condition{kernel} {}
++    Kernel::KLightLock lock;
++    Kernel::KLightConditionVariable condition;
++};
++
++ChimeraGuestCondition::ChimeraGuestCondition() = default;
++ChimeraGuestCondition::~ChimeraGuestCondition() = default;
++
++void ChimeraGuestCondition::Wait(const std::function<bool()>& ready) {
++    if (!impl) {
++        // (made at the first wait: the kernel is there by then)
++        impl = std::make_unique<Impl>(g_chimera_system->Kernel());
++    }
++    Kernel::KScopedLightLock lk{impl->lock};
++    while (!ready()) {
++        // (a thread being ended is not put to sleep, and must not spin here)
++        if (Kernel::GetCurrentThread(g_chimera_system->Kernel()).IsTerminationRequested()) {
++            break;
++        }
++        impl->condition.Wait(std::addressof(impl->lock));
++    }
++}
++
++void ChimeraGuestCondition::Signal() {
++    if (impl) {
++        impl->condition.Broadcast();
++    }
++}
++
+ s64 ChimeraTimeNs() {
+     return g_chimera_system ? g_chimera_system->CoreTiming().GetGlobalTimeNs().count() : 0;
+ }
+diff --git a/src/core/core.h b/src/core/core.h
+--- a/src/core/core.h
++++ b/src/core/core.h
+@@ -151,6 +151,23 @@
+ /// Chimera: the machine's clock, for code that has no System at hand and
+ /// would otherwise read the host's.
+ s64 ChimeraTimeNs();
++/// Chimera: what a guest thread waits for inside the emulator's own code,
++/// in place of a host condition variable. Wait puts the calling guest
++/// thread to sleep in the machine's kernel until `ready` holds; Signal
++/// wakes the sleepers to look again. (Sleeping on the clock and looking
++/// every tenth of a millisecond did the same at ten thousand wake-ups a
++/// second of machine time, each a timer event and two thread switches.)
++class ChimeraGuestCondition {
++public:
++    ChimeraGuestCondition();
++    ~ChimeraGuestCondition();
++    void Wait(const std::function<bool()>& ready);
++    void Signal();
++
++private:
++    struct Impl;
++    std::unique_ptr<Impl> impl;
++};
+ #endif
+ 
+ class System {
+diff --git a/src/core/core_timing.cpp b/src/core/core_timing.cpp
+--- a/src/core/core_timing.cpp
++++ b/src/core/core_timing.cpp
+@@ -216,6 +216,29 @@
+ }
+ 
+ void CoreTiming::Idle() {
++#ifdef CHIMERA
++    // Chimera: this is asked when every core has been found idle
++    // (CpuManager::PreemptSingleCore), and then nothing can happen before
++    // the next event: the clock goes straight there. Upstream creeps towards
++    // it a thousand cycles - a microsecond of the machine's time - at a time,
++    // with a round of the scheduler and its fibers for each; a game asleep
++    // until the next vsync cost thousands of rounds a frame, 43% of the
++    // host's time on a game measured.
++    if (!is_multicore) {
++        std::scoped_lock lock{basic_lock};
++        if (!event_queue.empty()) {
++            using Ratio = Common::WallClock::CPUTickToNsRatio;
++            const u64 next_ns = static_cast<u64>((std::max<s64>)(event_queue.top().time, 0));
++            // the first tick count whose time is the event's or later
++            const u64 target = (next_ns * Ratio::den + Ratio::num - 1) / Ratio::num;
++            if (target > cpu_ticks) {
++                downcount -= static_cast<s64>(target - cpu_ticks);
++                cpu_ticks = target;
++            }
++            return;
++        }
++    }
++#endif
+     AddTicks(1000U);
+ }
+ 
+diff --git a/src/core/hle/service/nvnflinger/buffer_queue_core.cpp b/src/core/hle/service/nvnflinger/buffer_queue_core.cpp
+--- a/src/core/hle/service/nvnflinger/buffer_queue_core.cpp
++++ b/src/core/hle/service/nvnflinger/buffer_queue_core.cpp
+@@ -53,16 +53,20 @@
+ 
+ void BufferQueueCore::SignalDequeueCondition() {
+     dequeue_possible.store(true);
++#ifdef CHIMERA
++    chimera_dequeue.Signal();
++#endif
+     dequeue_condition.notify_all();
+ }
+ 
+ bool BufferQueueCore::WaitForDequeueCondition(std::unique_lock<std::mutex>& lk) {
+ #ifdef CHIMERA
+     // the consumer that frees a slot is the compositor, at vsync, on the
+-    // same host thread: wait on the machine's clock
++    // same host thread: this guest thread sleeps in the machine's kernel
++    // until it signals
+     while (!dequeue_possible.load()) {
+         lk.unlock();
+-        Core::ChimeraGuestSleep(100'000);
++        chimera_dequeue.Wait([this] { return dequeue_possible.load(); });
+         lk.lock();
+     }
+     dequeue_possible.store(false);
+@@ -147,7 +151,7 @@
+     while (is_allocating) {
+ #ifdef CHIMERA
+         mutex.unlock();
+-        Core::ChimeraGuestSleep(100'000);
++        chimera_allocating.Wait([this] { return !is_allocating; });
+         mutex.lock();
+ #else
+         is_allocating_condition.wait(mutex);
+diff --git a/src/core/hle/service/nvnflinger/buffer_queue_core.h b/src/core/hle/service/nvnflinger/buffer_queue_core.h
+--- a/src/core/hle/service/nvnflinger/buffer_queue_core.h
++++ b/src/core/hle/service/nvnflinger/buffer_queue_core.h
+@@ -19,6 +19,9 @@
+ #include <unordered_map>
+ #include <algorithm>
+ 
++#ifdef CHIMERA
++#include "core/core.h"
++#endif
+ #include "core/hle/service/nvnflinger/buffer_item.h"
+ #include "core/hle/service/nvnflinger/buffer_queue_defs.h"
+ #include "core/hle/service/nvnflinger/buffer_slot.h"
+@@ -95,6 +98,10 @@
+     u32 transform_hint{};
+     bool is_allocating{};
+     mutable std::condition_variable_any is_allocating_condition;
++#ifdef CHIMERA
++    Core::ChimeraGuestCondition chimera_dequeue;
++    mutable Core::ChimeraGuestCondition chimera_allocating;
++#endif
+ };
+ 
+ } // namespace Service::android
+diff --git a/src/video_core/texture_cache/texture_cache.h b/src/video_core/texture_cache/texture_cache.h
+--- a/src/video_core/texture_cache/texture_cache.h
++++ b/src/video_core/texture_cache/texture_cache.h
+@@ -626,6 +626,33 @@
+     std::ranges::sort(images, [this](ImageId lhs, ImageId rhs) {
+         return slot_images[lhs].modification_tick < slot_images[rhs].modification_tick;
+     });
++#ifdef CHIMERA
++    // Chimera: this runs at every frame's end, over everything the GPU drew
++    // (GPU::ChimeraQuiesce). Upstream waits for the GPU after each image -
++    // eleven waits a frame of a millisecond each on a game measured.
++    // Every image is asked for first, each into a staging buffer of its own,
++    // and the GPU is waited for once.
++    if constexpr (IMPLEMENTS_ASYNC_DOWNLOADS) {
++        using Map = decltype(runtime.DownloadStagingBuffer(size_t{}, true));
++        std::vector<Map> maps;
++        maps.reserve(images.size());
++        for (const ImageId image_id : images) {
++            Image& image = slot_images[image_id];
++            maps.push_back(runtime.DownloadStagingBuffer(image.unswizzled_size_bytes, true));
++            const auto copies = FullDownloadCopies(image.info);
++            image.DownloadMemory(maps.back(), copies);
++        }
++        runtime.Finish();
++        for (size_t i = 0; i < images.size(); i++) {
++            Image& image = slot_images[images[i]];
++            const auto copies = FullDownloadCopies(image.info);
++            SwizzleImage(*gpu_memory, image.gpu_addr, image.info, copies, maps[i].mapped_span,
++                         swizzle_data_buffer);
++            runtime.FreeDeferredStagingBuffer(maps[i]);
++        }
++        return;
++    }
++#endif
+     for (const ImageId image_id : images) {
+         Image& image = slot_images[image_id];
+         auto map = runtime.DownloadStagingBuffer(image.unswizzled_size_bytes);

@@ -1,0 +1,221 @@
+{
+ "package": "eden",
+ "effectiveTerms": "GPL-3.0-or-later",
+ "commercialUse": "allowed under the GPL",
+ "note": "The built core combines this repository's integration with Eden, which is GPL-3.0-or-later (with parts GPL-2.0-or-later from yuzu), and the libraries it links, all under terms the GPL accepts: FFmpeg is LGPL-2.1-or-later, configured without its GPL or non-free parts, and the rest are permissive. The package carries no keys, no system software and no game: those are the console owner's, supplied to a project as firmware and a game file. Each published package is built from the commit of this repository it names.",
+ "components": [
+  {
+   "name": "chimera-core-eden (integration)",
+   "license": "GPL-3.0-or-later",
+   "url": "https://github.com/mayonnaisegoodfellas/chimera-core-eden",
+   "commit": "{selfCommit}",
+   "file": "LICENSE"
+  },
+  {
+   "name": "Eden",
+   "license": "GPL-3.0-or-later (parts GPL-2.0-or-later, from yuzu)",
+   "url": "https://git.eden-emu.dev/eden-emu/eden",
+   "commit": "{submodule:extern/eden}",
+   "file": "extern/eden/LICENSE.txt",
+   "sourceUrl": "https://github.com/eden-emulator/mirror/archive/{commit}.tar.gz"
+  },
+  {
+   "name": "dynarmic (Eden's copy)",
+   "license": "0BSD (MerryMage), Eden's changes GPL-3.0-or-later",
+   "url": "https://git.eden-emu.dev/eden-emu/eden",
+   "commit": "{submodule:extern/eden}",
+   "file": "extern/eden/LICENSE.txt"
+  },
+  {
+   "name": "xbyak",
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/herumi/xbyak",
+   "version": "v7.40.1",
+   "file": "extern/eden/.cache/cpm/xbyak/v7.40.1/COPYRIGHT"
+  },
+  {
+   "name": "Boost (container, context, date_time, filesystem, process, headers)",
+   "license": "BSL-1.0",
+   "url": "https://www.boost.org",
+   "version": "1.92.0",
+   "file": "extern/eden/.cache/cpm/boost/1.92.0/LICENSE_1_0.txt"
+  },
+  {
+   "name": "fmt",
+   "license": "MIT",
+   "url": "https://github.com/fmtlib/fmt",
+   "version": "12.1.0",
+   "file": "extern/eden/.cache/cpm/fmt/12.1.0/LICENSE"
+  },
+  {
+   "name": "nlohmann/json",
+   "license": "MIT",
+   "url": "https://github.com/nlohmann/json",
+   "version": "v3.12.0",
+   "file": "extern/eden/.cache/cpm/nlohmann_json/v3.12.0/LICENSE.MIT"
+  },
+  {
+   "name": "frozen",
+   "license": "Apache-2.0",
+   "url": "https://github.com/serge-sans-paille/frozen",
+   "version": "61dce5ae18",
+   "file": "extern/eden/.cache/cpm/frozen/61dce5ae18/LICENSE"
+  },
+  {
+   "name": "cpp-httplib",
+   "license": "MIT",
+   "url": "https://github.com/yhirose/cpp-httplib",
+   "version": "v0.46.0",
+   "file": "extern/eden/.cache/cpm/httplib/v0.46.0/LICENSE"
+  },
+  {
+   "name": "simpleini",
+   "license": "MIT",
+   "url": "https://github.com/brofield/simpleini",
+   "version": "v4.25",
+   "file": "extern/eden/.cache/cpm/simpleini/v4.25/LICENCE.txt"
+  },
+  {
+   "name": "ENet",
+   "license": "MIT",
+   "url": "https://github.com/lsalzman/enet",
+   "version": "v1.3.18",
+   "file": "extern/eden/.cache/cpm/enet/v1.3.18/LICENSE"
+  },
+  {
+   "name": "LZ4",
+   "license": "BSD-2-Clause (the library, lib/)",
+   "url": "https://github.com/lz4/lz4",
+   "version": "ebb370ca83",
+   "file": "extern/eden/.cache/cpm/lz4/ebb370ca83/LICENSE"
+  },
+  {
+   "name": "Zstandard",
+   "license": "BSD-3-Clause (chosen of BSD-3-Clause or GPL-2.0)",
+   "url": "https://github.com/facebook/zstd",
+   "version": "33618c8",
+   "file": "extern/eden/.cache/cpm/zstd/33618c8/LICENSE"
+  },
+  {
+   "name": "zlib",
+   "license": "Zlib",
+   "url": "https://zlib.net",
+   "version": "v1.3.2",
+   "file": "extern/eden/.cache/cpm/zlib/v1.3.2/LICENSE"
+  },
+  {
+   "name": "Opus",
+   "license": "BSD-3-Clause",
+   "url": "https://opus-codec.org",
+   "version": "a3f0ec02b3",
+   "file": "extern/eden/.cache/cpm/opus/a3f0ec02b3/COPYING"
+  },
+  {
+   "name": "sirit",
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/eden-emulator/sirit",
+   "version": "v1.0.5",
+   "file": "extern/eden/.cache/cpm/sirit/v1.0.5/LICENSE.txt"
+  },
+  {
+   "name": "SPIRV-Headers",
+   "license": "MIT, and the other terms its LICENSE lists",
+   "url": "https://github.com/KhronosGroup/SPIRV-Headers",
+   "version": "vulkan-sdk-1.4.341.0",
+   "file": "extern/eden/.cache/cpm/spirv-headers/vulkan-sdk-1.4.341.0/LICENSE"
+  },
+  {
+   "name": "Vulkan-Headers",
+   "license": "Apache-2.0 OR MIT",
+   "url": "https://github.com/KhronosGroup/Vulkan-Headers",
+   "version": "v1.4.345",
+   "file": "extern/eden/.cache/cpm/vulkanheaders/v1.4.345/LICENSE.md"
+  },
+  {
+   "name": "Vulkan-Utility-Libraries",
+   "license": "Apache-2.0",
+   "url": "https://github.com/KhronosGroup/Vulkan-Utility-Libraries",
+   "version": "v1.4.345",
+   "file": "extern/eden/.cache/cpm/vulkanutilitylibraries/v1.4.345/LICENSE.md"
+  },
+  {
+   "name": "VulkanMemoryAllocator",
+   "license": "MIT",
+   "url": "https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator",
+   "version": "v3.3.0",
+   "file": "extern/eden/.cache/cpm/vulkanmemoryallocator/v3.3.0/LICENSE.txt"
+  },
+  {
+   "name": "ReShade FX compiler",
+   "license": "BSD-3-Clause",
+   "url": "https://github.com/crosire/reshade",
+   "version": "v6.8.0",
+   "file": "extern/eden/.cache/cpm/reshade/v6.8.0/LICENSE.md"
+  },
+  {
+   "name": "FidelityFX-FSR (shader sources)",
+   "license": "MIT",
+   "url": "https://github.com/GPUOpen-Effects/FidelityFX-FSR",
+   "file": "extern/eden/externals/FidelityFX-FSR/license.txt"
+  },
+  {
+   "name": "zbic",
+   "license": "GPL-2.0 as its LICENSE file reads (a variant of Zstandard, itself BSD-3-Clause or GPL-2.0); Eden links it, and whether that sits with GPL-3.0-or-later is upstream's question",
+   "url": "https://github.com/kinnay/zbic",
+   "version": "11b08f2712264bbed731545085cbd9702096ceb7",
+   "file": "extern/eden/.cache/cpm/zbic/11b08f2712264bbed731545085cbd9702096ceb7/LICENSE"
+  },
+  {
+   "name": "time zone data (tzdb, as Eden's tzdb_to_nx packs it)",
+   "license": "public domain",
+   "url": "https://github.com/eden-emu/tzdb_to_nx",
+   "version": "230326"
+  },
+  {
+   "name": "tz (time zone code)",
+   "license": "BSD-2-Clause, Eden's changes GPL-3.0-or-later",
+   "url": "https://git.eden-emu.dev/eden-emu/eden",
+   "file": "extern/eden/LICENSES/BSD-2-Clause.txt"
+  },
+  {
+   "name": "bc_decoder",
+   "license": "MPL-2.0",
+   "url": "https://git.eden-emu.dev/eden-emu/eden",
+   "file": "extern/eden/LICENSES/MPL-2.0.txt"
+  },
+  {
+   "name": "stb (image, image_resize, image_write, dxt)",
+   "license": "MIT",
+   "url": "https://github.com/nothings/stb",
+   "file": "extern/eden/LICENSES/MIT.txt"
+  },
+  {
+   "name": "LLVM's Itanium demangler",
+   "license": "Apache-2.0 WITH LLVM-exception",
+   "url": "https://llvm.org",
+   "file": "extern/eden/LICENSES/LLVM-exception.txt"
+  },
+  {
+   "name": "glad (generated OpenGL loader)",
+   "license": "generated code, public domain / MIT; the Khronos headers it carries are Apache-2.0",
+   "url": "https://github.com/Dav1dde/glad",
+   "file": "extern/eden/LICENSES/Apache-2.0.txt"
+  },
+  {
+   "name": "FFmpeg",
+   "license": "LGPL-2.1-or-later",
+   "url": "https://ffmpeg.org",
+   "version": "7.1.2 (configured without --enable-gpl or --enable-nonfree; waterbox/build-deps.sh)",
+   "file": "build/deps/ffmpeg-7.1.2/COPYING.LGPLv2.1",
+   "sourceUrl": "https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz"
+  },
+  {
+   "name": "OpenSSL",
+   "license": "Apache-2.0",
+   "url": "https://www.openssl.org",
+   "version": "3.0.15",
+   "file": "build/deps/openssl-guest-obj/LICENSE.txt",
+   "sourceUrl": "https://github.com/openssl/openssl/releases/download/openssl-3.0.15/openssl-3.0.15.tar.gz"
+  }
+ ]
+}

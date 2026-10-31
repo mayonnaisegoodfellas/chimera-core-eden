@@ -1,0 +1,276 @@
+# The core built and tested on a runner, as far as a runner can go, and
+# published when it passes.
+#
+# A runner has no console keys, no system software and no game, and none of
+# them may ever be put on one, so nothing here runs the machine: the legs of
+# waterbox/run-gate.sh that do say SKIP. What is proved is everything before
+# that: the series applies to the pinned upstream, both flavours build from
+# nothing with GCC 14, core.wbx links and is sandbox-clean (check-wbx), the
+# package is made, and Chimera's own checks of the package open it through
+# the engine.
+#
+# What passes is published as this repository's own releases, through the
+# workflow every Chimera core publishes with: a rolling `dev` on every push to
+# main, and an immutable `nightly-YYYY-MM-DD` from the scheduled run when main
+# moved since the last one. The first push publishes the first nightly too.
+# A pull request is built and tested, and nothing is published from it. The
+# package carries no keys, system software or game.
+name: chimera
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: 'dev (rolling) or nightly (dated). Blank means dev.'
+        required: false
+        default: ''
+        type: string
+  schedule:
+    # 04:00 UTC. The plan job skips the build when main has not moved since
+    # the last nightly.
+    - cron: '0 4 * * *'
+
+# Keyed by the event as well as the ref: the nightly schedule and a push to
+# main would otherwise cancel each other, and the publish that depends on the
+# cancelled build is then skipped with nothing reporting a failure.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CHIMERA_REF: main
+
+jobs:
+
+  plan:
+    name: what this run builds and publishes
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      dev: ${{ steps.plan.outputs.dev }}
+      nightly: ${{ steps.plan.outputs.nightly }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          KIND: ${{ github.event.inputs.kind }}
+        run: |
+          last=$(git tag -l 'nightly-*' --sort=-creatordate | head -1)
+          moved=true
+          if [ -n "$last" ] && [ "$(git rev-list -n1 "$last")" = "$(git rev-parse HEAD)" ]; then moved=false; fi
+          build=true dev=false nightly=false
+          case "$EVENT" in
+            schedule) nightly=$moved; build=$moved ;;
+            workflow_dispatch) if [ "$KIND" = nightly ]; then nightly=true; else dev=true; fi ;;
+            push) dev=true; [ -n "$last" ] || nightly=true ;;
+            pull_request) ;;
+          esac
+          echo "last nightly: ${last:-none}; build=$build dev=$dev nightly=$nightly"
+          { echo "build=$build"; echo "dev=$dev"; echo "nightly=$nightly"; } >> "$GITHUB_OUTPUT"
+
+  package:
+    name: the package (guest build, core.wbx, the gate's rules, Chimera's checks of the package)
+    needs: [ plan ]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Room for the build
+        # About 7 GB here; the image keeps SDKs this job never uses.
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Upstream at the pinned commit, with its own submodules
+        run: git submodule update --init --recursive --depth 1 extern/eden
+
+      - name: Check out Chimera
+        uses: actions/checkout@v6
+        with:
+          repository: ToolAssisted-run/chimera
+          ref: ${{ env.CHIMERA_REF }}
+          path: chimera-checkout
+          submodules: recursive
+
+      - name: Install build dependencies
+        # Its own limit, and apt's: a package mirror that stops answering fails
+        # the step in minutes instead of holding the job for hours.
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends \
+            meson ninja-build build-essential pkg-config python3 python3-pip perl curl xz-utils bzip2 unzip \
+            gcc-14 g++-14 glslang-tools mono-complete libgl1-mesa-dev libegl-dev libx11-dev libxext-dev libasound2-dev
+
+      - name: Use GCC 14
+        # Eden wants GCC 14, and miniBox builds the guest's libstdc++ for
+        # whatever gcc is on PATH: everything gets GCC 14 first on PATH.
+        run: |
+          mkdir -p "$HOME/gcc14"
+          for t in gcc:gcc-14 g++:g++-14 cc:gcc-14 c++:g++-14 cpp:cpp-14; do
+            ln -sf "/usr/bin/${t#*:}" "$HOME/gcc14/${t%%:*}"
+          done
+          echo "$HOME/gcc14" >> "$GITHUB_PATH"
+          "$HOME/gcc14/gcc" -dumpfullversion
+
+      - name: CMake 3.31, where the scripts look for it
+        run: |
+          mkdir -p build/deps
+          pip download cmake==3.31.6 --no-deps -d build/deps
+          unzip -q build/deps/cmake-3.31.6-*.whl -d build/deps/cmake-whl
+          chmod +x build/deps/cmake-whl/cmake/data/bin/cmake
+          build/deps/cmake-whl/cmake/data/bin/cmake --version | head -1
+
+      - name: Build Chimera (the engine, chimera-run and the package checks)
+        # The package checks open the package through the engine, libchimera.
+        run: chimera-checkout/tools/ci-chimera.sh "$HOME/qt"
+
+      - name: Build miniBox (host + C++ guest toolchain)
+        run: |
+          mb="$PWD/chimera-checkout/extern/chimera-common-minibox"
+          meson setup "$mb/build/meson-linux" "$mb"
+          meson compile -C "$mb/build/meson-linux"
+          meson setup "$mb/build/meson-cpp" "$mb" -Dguest_cpp=true
+          meson compile -C "$mb/build/meson-cpp"
+
+      - name: Build the guest, link core.wbx and make the package
+        # The patches, FFmpeg and OpenSSL for the guest, the GPU bridge, Eden
+        # under the miniBox toolchain, core.wbx (check-wbx runs on it) and the
+        # package, which lands in chimera-checkout/build/Cores.
+        env:
+          CORE_VERSION: ${{ github.sha }}
+        run: ./waterbox/build-package.sh -r "$PWD/chimera-checkout"
+
+      - name: The gate, as far as it goes without a game
+        # -n: what was just built. The series is the tree and the declarations
+        # agree with the driver; every leg that runs a game says SKIP.
+        env:
+          CHIMERA_ROOT: ${{ github.workspace }}/chimera-checkout
+        run: sh waterbox/run-gate.sh -n
+
+      - name: Chimera's checks of the package
+        # Readable, built for an ABI this frontend runs, a working factory,
+        # binding only buttons its controller declares, stamping a version.
+        env:
+          CHIMERA_CORES_DIR: ${{ github.workspace }}/chimera-checkout/build/Cores
+        run: |
+          ls -la "$CHIMERA_CORES_DIR"
+          chimera-checkout/build/meson-linux/source/ui/test-packages
+
+      - name: The frontend test, as far as it goes without a game
+        # Chimera's window, run headless. With no game and no console keys on
+        # a runner, both of its tests say SKIP.
+        env:
+          CHIMERA_ROOT: ${{ github.workspace }}/chimera-checkout
+        run: bash waterbox/tests/run-frontend.sh
+
+      - name: Keep the package for the publish jobs
+        uses: actions/upload-artifact@v7
+        with:
+          name: eden-${{ github.sha }}
+          path: chimera-checkout/build/Cores/eden.chimeraCore
+          if-no-files-found: error
+
+  native:
+    name: the native reference builds
+    # The other flavour: the same sources for the host, which the gate compares
+    # the sandbox against on a machine that has a game. Here it only has to
+    # build - a reference that does not is a gate nobody can run.
+    needs: [ plan ]
+    if: needs.plan.outputs.build == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Room for the build
+        run: |
+          sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h / | tail -1
+
+      - name: Upstream at the pinned commit, with its own submodules
+        run: git submodule update --init --recursive --depth 1 extern/eden
+
+      - name: Check out Chimera (for miniBox's list of GL entry points)
+        uses: actions/checkout@v6
+        with:
+          repository: ToolAssisted-run/chimera
+          ref: ${{ env.CHIMERA_REF }}
+          path: chimera-checkout
+          submodules: recursive
+
+      - name: Install build dependencies
+        # Its own limit, and apt's: a package mirror that stops answering fails
+        # the step in minutes instead of holding the job for hours.
+        timeout-minutes: 15
+        run: |
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 update
+          sudo apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=3 install -y --no-install-recommends \
+            ninja-build build-essential pkg-config python3 python3-pip perl curl xz-utils bzip2 unzip \
+            gcc-14 g++-14 glslang-tools libglvnd-dev libglu1-mesa-dev zlib1g-dev libssl-dev libzstd-dev libicu-dev
+
+      - name: Use GCC 14
+        run: |
+          mkdir -p "$HOME/gcc14"
+          for t in gcc:gcc-14 g++:g++-14 cc:gcc-14 c++:g++-14 cpp:cpp-14; do
+            ln -sf "/usr/bin/${t#*:}" "$HOME/gcc14/${t%%:*}"
+          done
+          echo "$HOME/gcc14" >> "$GITHUB_PATH"
+          "$HOME/gcc14/gcc" -dumpfullversion
+
+      - name: CMake 3.31, where the scripts look for it
+        run: |
+          mkdir -p build/deps
+          pip download cmake==3.31.6 --no-deps -d build/deps
+          unzip -q build/deps/cmake-3.31.6-*.whl -d build/deps/cmake-whl
+          chmod +x build/deps/cmake-whl/cmake/data/bin/cmake
+          build/deps/cmake-whl/cmake/data/bin/cmake --version | head -1
+
+      - name: Build the native reference
+        env:
+          MINIBOX_DIR: ${{ github.workspace }}/chimera-checkout/extern/chimera-common-minibox
+        run: |
+          sh waterbox/build-native.sh
+          ls -la build/native/bin/eden-run-native
+
+  publish-dev:
+    name: publish the development build
+    needs: [ plan, package, native ]
+    if: needs.plan.outputs.dev == 'true'
+    permissions:
+      contents: write
+    uses: ToolAssisted-run/chimera/.github/workflows/publish-core.yml@main
+    with:
+      core-id: eden
+      artifact: eden-${{ github.sha }}
+      package: eden.chimeraCore
+      kind: dev
+
+  publish-nightly:
+    name: publish the nightly
+    # After the dev publish, when there is one: both rewrite the release
+    # index, and two at once would race.
+    needs: [ plan, package, native, publish-dev ]
+    if: >-
+      !cancelled() && needs.plan.outputs.nightly == 'true'
+      && needs.package.result == 'success' && needs.native.result == 'success'
+      && needs.publish-dev.result != 'failure'
+    permissions:
+      contents: write
+    uses: ToolAssisted-run/chimera/.github/workflows/publish-core.yml@main
+    with:
+      core-id: eden
+      artifact: eden-${{ github.sha }}
+      package: eden.chimeraCore
+      kind: nightly
