@@ -14,6 +14,7 @@ endif()
 add_library(eden-guest-core STATIC
 	${W}/driver/eden_driver.cpp
 	${W}/driver/kept_images.cpp
+	${W}/driver/nsz_tool.cpp
 	${W}/driver/vma.cpp
 	${W}/driver/wbx-entry.cpp
 	${W}/driver/memfs.cpp

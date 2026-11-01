@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: a zip fájlban lévő %2 olyan módon van tömörítve, amelyet ez a mag nem olvas.",
 		"error.zlib_failed": "A zip fájl nem csomagolható ki, mert a zlib könyvtár nem indult el.",
 		"zip.system_software": "A rendszerszoftver",
-		"zip.save_data": "A mentett adatok"
+		"zip.save_data": "A mentett adatok",
+		"tool.decompress_nsz.menu": "NSZ kibontása...",
+		"tool.decompress_nsz.help": ".nsp-t készít egy .nsz-ből: ugyanazt a játékot, frissítést vagy DLC-t tömörítés nélkül. Az Eden játék közben nem tudja olvasni az egyetlen folyamként tömörített .nsz-t (tömör NSZ); az itt írt .nsp-t úgy olvassa, mint bármely mást.",
+		"tool.decompress_nsz.input": "Tömörített fájl (.nsz)",
+		"tool.decompress_nsz.output": "Kibontott fájl (.nsp)",
+		"tool.decompress_nsz.done": "Kész: %1 tömörített archívum kibontva, %2 GB írva.",
+		"error.tool.unknown": "Ennek a magnak nincs ilyen eszköze.",
+		"error.tool.unreadable": "A(z) %1 nem olvasható.",
+		"error.tool.not_nsz": "A(z) %1 nem NSZ-fájl.",
+		"error.tool.bad_ncz": "A fájlban lévő %1 sérült, vagy nem olyan tömörített archívum, amelyet ez a mag ismer.",
+		"error.tool.nothing_compressed": "A(z) %1 nem tartalmaz semmi tömörítettet: úgy használható, ahogy van.",
+		"error.tool.read_write": "Egy fájlt nem sikerült olvasni vagy írni. Megtelt a lemez?",
+		"error.tool.not_zstd": "A fájlban lévő %1 nem bontható ki: a fájl sérült.",
+		"error.tool.cut_short": "A fájlban lévő %1 túl korán véget ér: a fájl sérült.",
+		"error.solid_nsz": "A(z) %1 egyetlen folyamként van tömörítve (tömör NSZ), amelyet az Eden játék közben nem tud olvasni. Készítsen belőle .nsp-t ezzel: Eszközök > Magonkénti eszközök > Eden > NSZ kibontása..., és azt használja."
 	}
 }

@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: zip-tiedostossa oleva tiedosto %2 on pakattu tavalla, jota tämä ydin ei lue.",
 		"error.zlib_failed": "Zip-tiedostoa ei voitu purkaa, koska zlib-kirjasto ei käynnistynyt.",
 		"zip.system_software": "Järjestelmäohjelmisto",
-		"zip.save_data": "Tallennustiedot"
+		"zip.save_data": "Tallennustiedot",
+		"tool.decompress_nsz.menu": "Pura NSZ...",
+		"tool.decompress_nsz.help": "Tekee .nsz-tiedostosta .nsp-tiedoston: sama peli, päivitys tai DLC ilman pakkausta. Eden ei voi lukea yhtenä virtana pakattua .nsz-tiedostoa (kiinteä NSZ) pelin ollessa käynnissä; tässä kirjoitetun .nsp-tiedoston se lukee kuten minkä tahansa muun.",
+		"tool.decompress_nsz.input": "Pakattu tiedosto (.nsz)",
+		"tool.decompress_nsz.output": "Purettu tiedosto (.nsp)",
+		"tool.decompress_nsz.done": "Valmis: purettiin %1 pakattua arkistoa, kirjoitettiin %2 Gt.",
+		"error.tool.unknown": "Tällä ytimellä ei ole sellaista työkalua.",
+		"error.tool.unreadable": "Tiedostoa %1 ei voi lukea.",
+		"error.tool.not_nsz": "%1 ei ole NSZ-tiedosto.",
+		"error.tool.bad_ncz": "Tiedoston sisällä oleva %1 on vaurioitunut tai ei ole tämän ytimen tuntema pakattu arkisto.",
+		"error.tool.nothing_compressed": "Tiedostossa %1 ei ole mitään pakattua: sitä voi käyttää sellaisenaan.",
+		"error.tool.read_write": "Tiedostoa ei voitu lukea tai kirjoittaa. Onko levy täynnä?",
+		"error.tool.not_zstd": "Tiedoston sisällä oleva %1 ei purkaudu: tiedosto on vaurioitunut.",
+		"error.tool.cut_short": "Tiedoston sisällä oleva %1 loppuu liian aikaisin: tiedosto on vaurioitunut.",
+		"error.solid_nsz": "%1 on pakattu yhtenä virtana (kiinteä NSZ), jota Eden ei voi lukea pelin ollessa käynnissä. Tee siitä .nsp-tiedosto valinnalla Työkalut > Ydinkohtaiset työkalut > Eden > Pura NSZ... ja käytä sitä."
 	}
 }

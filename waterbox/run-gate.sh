@@ -100,7 +100,7 @@ for a in axes:
 ids = [s["id"] for s in slots["slots"]]
 if ids != ["game", "savedata", "content"]: problems.append("slots are %s" % ids)
 content = slots["slots"][-1]
-if content.get("formats") != ["nsp"] or content.get("min") != 0: problems.append("the content slot takes %s" % content.get("formats"))
+if content.get("formats") != ["nsp", "nsz"] or content.get("min") != 0: problems.append("the content slot takes %s" % content.get("formats"))
 # the resolutions the setting offers are the ones the driver knows, and the
 # declared picture holds the largest of them (docked, 1920x1080, at 3x)
 driver = open(here + "/driver/eden_driver.cpp").read()
@@ -142,20 +142,49 @@ if out=$(python3 -I "$here/tests/check-names.py" "$here/languages" 2>&1); then
 else
 	fail "names: $(printf '%s' "$out" | grep -v 'bent or missing names in' | head -3 | tr '\n' ' ')"
 fi
-# Chimera's own checks of a core's texts: every key named, every name a key,
-# and Chimera's names unbent. The texts check reads waterbox/, where this
-# core's code and tables are, and not the whole checkout: CI puts Chimera's
-# own checkout inside it, and Chimera's sources hold keys of their own.
+# Chimera's own check of a core's texts: every key named, every name a key.
+# (That the names stay as they are - Chimera's, this core's - is the
+# engine's check of the package's tables, which the contract tests run.) It
+# reads waterbox/, where this core's code and tables are, and not the whole
+# checkout: CI puts Chimera's own checkout inside it, and Chimera's sources
+# hold keys of their own.
 ct="$chimera_root/tools/check-core-texts.py"
-pn="$chimera_root/tools/check-proper-nouns.py"
-if [ -f "$ct" ] && [ -f "$pn" ]; then
-	if ct_out=$(python3 -I "$ct" "$here" 2>&1) && pn_out=$(python3 -I "$pn" "$here" 2>&1); then
-		pass "texts: $(printf '%s' "$ct_out" | tail -1); Chimera's names unbent"
+if [ -f "$ct" ]; then
+	if ct_out=$(python3 -I "$ct" "$here" 2>&1); then
+		pass "texts: $(printf '%s' "$ct_out" | tail -1)"
 	else
-		fail "texts: $(printf '%s %s' "${ct_out:-}" "${pn_out:-}" | head -3 | tr '\n' ' ')"
+		fail "texts: $(printf '%s' "${ct_out:-}" | head -3 | tr '\n' ' ')"
 	fi
 else
 	skip "texts: no Chimera checkout with tools/check-core-texts.py at $chimera_root"
+fi
+
+# The core's own tool, Decompress NSZ (Chimera's Tools > Core-Specific
+# Tools), as the window runs it: in Chimera's sandbox, through chimera-run
+# --run-tool, with no game. A small .nsz made here (tests/make-nsz.py: made-up
+# bytes, encrypted and compressed as a real one is), one compressed as one
+# stream and one in blocks, must each come back as the .nsp it stands for,
+# file for file; a file that is no NSZ is refused by name and leaves no file.
+if [ -x "$engine" ] && [ -f "$pkg" ]; then
+	tw="$work/tool"
+	rm -rf "$tw"; mkdir -p "$tw"
+	python3 "$here/tests/make-nsz.py" "$tw" > "$tw/make.log" 2>&1
+	python3 "$here/tests/nsp-entries.py" "$tw/expected.nsp" > "$tw/expected.list" 2>&1
+	ok=1; said=""
+	for kind in solid block; do
+		"$engine" --run-tool decompress_nsz "$pkg" --input input="$tw/$kind.nsz" --output output="$tw/$kind.nsp" > "$tw/$kind.out" 2>&1
+		python3 "$here/tests/nsp-entries.py" "$tw/$kind.nsp" > "$tw/$kind.list" 2>&1
+		if ! grep -q '^{"done": ' "$tw/$kind.out" || ! cmp -s "$tw/$kind.list" "$tw/expected.list"; then ok=0; said="$said $kind: $(head -c 160 "$tw/$kind.out")"; fi
+	done
+	cp "$tw/expected.list" "$tw/not-an-nsz.nsz"
+	"$engine" --run-tool decompress_nsz "$pkg" --input input="$tw/not-an-nsz.nsz" --output output="$tw/refused.nsp" > "$tw/refused.out" 2>&1
+	if [ "$ok" = 1 ] && grep -q '^{"refused": .*not-an-nsz.nsz' "$tw/refused.out" && [ ! -e "$tw/refused.nsp" ]; then
+		pass "Decompress NSZ: a solid and a block .nsz made here come back as their .nsp ($(head -1 "$tw/make.log")); a file that is no NSZ is refused by name, no file left"
+	else
+		fail "Decompress NSZ:$said refused: $(head -c 160 "$tw/refused.out")"
+	fi
+else
+	skip "Decompress NSZ: no $engine or no build/package/eden.chimeraCore"
 fi
 
 # ---- with content ----
@@ -579,6 +608,29 @@ if [ -n "$(game_in core-wait)" ]; then
 	fi
 else
 	skip "core-wait: no game in ${games#$root/}/core-wait"
+fi
+
+# 10c. decompress-nsz: a real .nsz (a game, update or DLC compressed as one
+# stream) and the .nsp it was made from, in build/test-games/decompress-nsz:
+# the tool gives the same files; and the .nsz played is refused by its name,
+# saying what to do (Eden would say only that the game holds no program).
+nsz="$(ls "$games/decompress-nsz"/*.nsz 2>/dev/null | head -1)"
+plain="$(ls "$games/decompress-nsz"/*.nsp 2>/dev/null | head -1)"
+if [ -n "$nsz" ] && [ -n "$plain" ] && [ -x "$engine" ] && [ -f "$pkg" ]; then
+	dw="$work/decompress-nsz"
+	rm -rf "$dw"; mkdir -p "$dw"
+	"$engine" --run-tool decompress_nsz "$pkg" --input input="$nsz" --output output="$dw/out.nsp" > "$dw/tool.out" 2>&1
+	python3 "$here/tests/nsp-entries.py" "$dw/out.nsp" > "$dw/out.list" 2>&1
+	python3 "$here/tests/nsp-entries.py" "$plain" > "$dw/plain.list" 2>&1
+	"$run" "$nsz" --work "$dw/play" $fw --frames 1 --renderer null > "$dw/play.out" 2>&1; r=$?
+	if grep -q '^{"done": ' "$dw/tool.out" && cmp -s "$dw/out.list" "$dw/plain.list" \
+		&& [ "$r" != 0 ] && grep -q "error.solid_nsz.$(basename "$nsz" | sed 's/[][]/./g')" "$dw/play.out"; then
+		pass "decompress-nsz: $(basename "$nsz") comes back as the .nsp it was made from ($(wc -l < "$dw/plain.list") files; $(grep '^{' "$dw/tool.out" | cut -c1-80)); played, it is refused by its name"
+	else
+		fail "decompress-nsz (play exit $r): $(head -c 160 "$dw/tool.out"); $(grep -m1 'Init failed' "$dw/play.out" | cut -c1-120)"
+	fi
+else
+	skip "decompress-nsz: no .nsz and .nsp in ${games#$root/}/decompress-nsz, or no package"
 fi
 
 echo "$fails failed"

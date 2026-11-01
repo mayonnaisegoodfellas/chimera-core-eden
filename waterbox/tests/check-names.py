@@ -9,8 +9,9 @@ Switch"). A particle in another script (Korean, Japanese) is grammar and
 leaves the name whole; a compound joined by a hyphen ("Switch-Spiel",
 "OpenGL-kontekst") leaves it whole too.
 
-Chimera's tools/check-proper-nouns.py knows only Chimera's own names; this
-knows this core's as well (NAMES below, and the coreName of
+Chimera's own check of a package's tables (the engine's, which the contract
+tests run) knows Chimera's names and the package's coreName; this knows
+this core's other names as well (NAMES below, and the coreName of
 waterbox.config), and also catches the endings that a sign joins to a name:
 "Switch:n", "Eden's", "Eden'in", "OpenGL-et".
 
@@ -34,7 +35,7 @@ import sys
 here = os.path.dirname(os.path.abspath(__file__))
 folder = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "..", "languages")
 
-# This core's names, then Chimera's (tools/check-proper-nouns.py).
+# This core's names, then Chimera's.
 NAMES = ["Eden", "yuzu", "Switch", "zlib",
          "Chimera", "TAStudio", "GitHub", "Lua", "Windows", "Linux", "macOS", "OpenGL", "Vulkan", "Direct3D", "SQLite",
          "miniBox", "ffmpeg", "Qt", "Wayland"]

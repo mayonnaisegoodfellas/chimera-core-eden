@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 in der Zip-Datei ist auf eine Weise gepackt, die dieser Core nicht liest.",
 		"error.zlib_failed": "Die Zip-Datei konnte nicht entpackt werden, weil zlib nicht starten wollte.",
 		"zip.system_software": "Die Systemsoftware",
-		"zip.save_data": "Die Spielstand-Daten"
+		"zip.save_data": "Die Spielstand-Daten",
+		"tool.decompress_nsz.menu": "NSZ entpacken...",
+		"tool.decompress_nsz.help": "Erstellt aus einer .nsz eine .nsp: dasselbe Spiel, Update oder DLC, nichts mehr komprimiert. Eden kann eine .nsz, die als ein einziger Strom komprimiert ist (eine solide NSZ), nicht lesen, während ein Spiel läuft; die .nsp, die dies schreibt, liest es wie jede andere.",
+		"tool.decompress_nsz.input": "Komprimierte Datei (.nsz)",
+		"tool.decompress_nsz.output": "Entpackte Datei (.nsp)",
+		"tool.decompress_nsz.done": "Fertig: %1 komprimierte Archive entpackt, %2 GB geschrieben.",
+		"error.tool.unknown": "Dieser Core hat kein solches Werkzeug.",
+		"error.tool.unreadable": "%1 kann nicht gelesen werden.",
+		"error.tool.not_nsz": "%1 ist keine NSZ-Datei.",
+		"error.tool.bad_ncz": "%1 in der Datei ist beschädigt oder kein komprimiertes Archiv, das dieser Core kennt.",
+		"error.tool.nothing_compressed": "%1 enthält nichts Komprimiertes: Sie kann so verwendet werden, wie sie ist.",
+		"error.tool.read_write": "Eine Datei konnte nicht gelesen oder geschrieben werden. Ist der Datenträger voll?",
+		"error.tool.not_zstd": "%1 in der Datei lässt sich nicht entpacken: Die Datei ist beschädigt.",
+		"error.tool.cut_short": "%1 in der Datei endet zu früh: Die Datei ist beschädigt.",
+		"error.solid_nsz": "%1 ist als ein einziger Strom komprimiert (eine solide NSZ), den Eden nicht lesen kann, während ein Spiel läuft. Erstellen Sie daraus mit Werkzeuge > Core-spezifische Werkzeuge > Eden > NSZ entpacken... eine .nsp und verwenden Sie diese."
 	}
 }

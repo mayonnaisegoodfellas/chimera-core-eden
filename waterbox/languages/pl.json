@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 w pliku zip jest spakowany w sposób, którego ten rdzeń nie czyta.",
 		"error.zlib_failed": "Nie udało się rozpakować pliku zip, bo biblioteka zlib nie wystartowała.",
 		"zip.system_software": "Oprogramowanie systemowe",
-		"zip.save_data": "Dane zapisu"
+		"zip.save_data": "Dane zapisu",
+		"tool.decompress_nsz.menu": "Rozpakuj NSZ...",
+		"tool.decompress_nsz.help": "Tworzy .nsp z .nsz: ta sama gra, aktualizacja lub DLC bez żadnej kompresji. Eden nie może czytać .nsz skompresowanego jednym strumieniem (ciągły NSZ), gdy gra działa; zapisany tu .nsp czyta jak każdy inny.",
+		"tool.decompress_nsz.input": "Plik skompresowany (.nsz)",
+		"tool.decompress_nsz.output": "Plik rozpakowany (.nsp)",
+		"tool.decompress_nsz.done": "Gotowe: rozpakowano skompresowanych archiwów: %1, zapisano %2 GB.",
+		"error.tool.unknown": "Ten rdzeń nie ma takiego narzędzia.",
+		"error.tool.unreadable": "Nie można odczytać %1.",
+		"error.tool.not_nsz": "%1 nie jest plikiem NSZ.",
+		"error.tool.bad_ncz": "%1 w pliku jest uszkodzony albo nie jest skompresowanym archiwum, które zna ten rdzeń.",
+		"error.tool.nothing_compressed": "%1 nie zawiera nic skompresowanego: można go użyć tak, jak jest.",
+		"error.tool.read_write": "Nie udało się odczytać ani zapisać pliku. Czy dysk jest pełny?",
+		"error.tool.not_zstd": "%1 w pliku nie daje się rozpakować: plik jest uszkodzony.",
+		"error.tool.cut_short": "%1 w pliku kończy się za wcześnie: plik jest uszkodzony.",
+		"error.solid_nsz": "%1 jest skompresowany jednym strumieniem (ciągły NSZ), którego Eden nie może czytać, gdy gra działa. Utwórz z niego .nsp za pomocą Narzędzia > Narzędzia rdzeni > Eden > Rozpakuj NSZ... i użyj go."
 	}
 }

@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 di dalam file zip dikemas dengan cara yang tidak dibaca core ini.",
 		"error.zlib_failed": "File zip tidak dapat dibuka, karena zlib tidak mau mulai.",
 		"zip.system_software": "Perangkat lunak sistem",
-		"zip.save_data": "Data simpan"
+		"zip.save_data": "Data simpan",
+		"tool.decompress_nsz.menu": "Buka kompresi NSZ...",
+		"tool.decompress_nsz.help": "Membuat .nsp dari .nsz: game, pembaruan, atau DLC yang sama tanpa kompresi. Eden tidak dapat membaca .nsz yang dikompresi sebagai satu aliran (NSZ solid) saat game berjalan; .nsp yang ditulis di sini dibacanya seperti yang lain.",
+		"tool.decompress_nsz.input": "Berkas terkompresi (.nsz)",
+		"tool.decompress_nsz.output": "Berkas yang dibuka (.nsp)",
+		"tool.decompress_nsz.done": "Selesai: %1 arsip terkompresi dibuka, %2 GB ditulis.",
+		"error.tool.unknown": "Core ini tidak punya alat seperti itu.",
+		"error.tool.unreadable": "%1 tidak dapat dibaca.",
+		"error.tool.not_nsz": "%1 bukan berkas NSZ.",
+		"error.tool.bad_ncz": "%1 di dalam berkas rusak, atau bukan arsip terkompresi yang dikenal core ini.",
+		"error.tool.nothing_compressed": "%1 tidak berisi apa pun yang terkompresi: dapat dipakai apa adanya.",
+		"error.tool.read_write": "Sebuah berkas tidak dapat dibaca atau ditulis. Apakah disk penuh?",
+		"error.tool.not_zstd": "%1 di dalam berkas tidak dapat dibuka: berkas rusak.",
+		"error.tool.cut_short": "%1 di dalam berkas berakhir terlalu cepat: berkas rusak.",
+		"error.solid_nsz": "%1 dikompresi sebagai satu aliran (NSZ solid), yang tidak dapat dibaca Eden saat game berjalan. Buat .nsp darinya dengan Alat > Alat khusus core > Eden > Buka kompresi NSZ..., lalu pakai itu."
 	}
 }

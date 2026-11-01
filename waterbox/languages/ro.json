@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 din fișierul zip este arhivat într-un fel pe care acest core nu îl citește.",
 		"error.zlib_failed": "Fișierul zip nu a putut fi dezarhivat, pentru că biblioteca zlib nu a pornit.",
 		"zip.system_software": "Software-ul de sistem",
-		"zip.save_data": "Datele de salvare"
+		"zip.save_data": "Datele de salvare",
+		"tool.decompress_nsz.menu": "Dezarhivează NSZ...",
+		"tool.decompress_nsz.help": "Face un .nsp dintr-un .nsz: același joc, aceeași actualizare sau DLC, fără nimic comprimat. Eden nu poate citi un .nsz comprimat ca un singur flux (un NSZ solid) în timp ce rulează un joc; .nsp-ul scris aici îl citește ca pe oricare altul.",
+		"tool.decompress_nsz.input": "Fișier comprimat (.nsz)",
+		"tool.decompress_nsz.output": "Fișier dezarhivat (.nsp)",
+		"tool.decompress_nsz.done": "Gata: %1 arhive comprimate dezarhivate, %2 GB scriși.",
+		"error.tool.unknown": "Acest nucleu nu are o astfel de unealtă.",
+		"error.tool.unreadable": "%1 nu poate fi citit.",
+		"error.tool.not_nsz": "%1 nu este un fișier NSZ.",
+		"error.tool.bad_ncz": "%1 din fișier este deteriorat sau nu este o arhivă comprimată pe care acest nucleu o cunoaște.",
+		"error.tool.nothing_compressed": "%1 nu conține nimic comprimat: poate fi folosit așa cum este.",
+		"error.tool.read_write": "Un fișier nu a putut fi citit sau scris. Este discul plin?",
+		"error.tool.not_zstd": "%1 din fișier nu se dezarhivează: fișierul este deteriorat.",
+		"error.tool.cut_short": "%1 din fișier se termină prea devreme: fișierul este deteriorat.",
+		"error.solid_nsz": "%1 este comprimat ca un singur flux (un NSZ solid), pe care Eden nu îl poate citi în timp ce rulează un joc. Faceți din el un .nsp cu Unelte > Unelte specifice nucleelor > Eden > Dezarhivează NSZ... și folosiți-l pe acela."
 	}
 }

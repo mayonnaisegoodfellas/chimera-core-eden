@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 trong tệp zip được nén theo cách mà core này không đọc.",
 		"error.zlib_failed": "Không giải nén được tệp zip, vì zlib không chịu khởi động.",
 		"zip.system_software": "Phần mềm hệ thống",
-		"zip.save_data": "Dữ liệu lưu"
+		"zip.save_data": "Dữ liệu lưu",
+		"tool.decompress_nsz.menu": "Giải nén NSZ...",
+		"tool.decompress_nsz.help": "Tạo .nsp từ .nsz: cùng trò chơi, bản cập nhật hoặc DLC nhưng không nén gì. Eden không đọc được .nsz nén thành một luồng (NSZ đặc) khi trò chơi đang chạy; tệp .nsp ghi ở đây thì nó đọc như mọi tệp khác.",
+		"tool.decompress_nsz.input": "Tệp đã nén (.nsz)",
+		"tool.decompress_nsz.output": "Tệp đã giải nén (.nsp)",
+		"tool.decompress_nsz.done": "Xong: đã giải nén %1 kho nén, đã ghi %2 GB.",
+		"error.tool.unknown": "Lõi này không có công cụ như vậy.",
+		"error.tool.unreadable": "Không đọc được %1.",
+		"error.tool.not_nsz": "%1 không phải tệp NSZ.",
+		"error.tool.bad_ncz": "%1 trong tệp bị hỏng, hoặc không phải kho nén mà lõi này biết.",
+		"error.tool.nothing_compressed": "%1 không có gì được nén: có thể dùng nguyên như vậy.",
+		"error.tool.read_write": "Không đọc hoặc ghi được một tệp. Đĩa đầy chăng?",
+		"error.tool.not_zstd": "%1 trong tệp không giải nén được: tệp bị hỏng.",
+		"error.tool.cut_short": "%1 trong tệp kết thúc quá sớm: tệp bị hỏng.",
+		"error.solid_nsz": "%1 được nén thành một luồng (NSZ đặc), Eden không đọc được khi trò chơi đang chạy. Hãy tạo .nsp từ nó bằng Công cụ > Công cụ riêng của từng lõi > Eden > Giải nén NSZ... và dùng tệp đó."
 	}
 }

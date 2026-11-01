@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 no arquivo zip está compactado de um jeito que este núcleo não lê.",
 		"error.zlib_failed": "Não foi possível descompactar o arquivo zip, porque o zlib não iniciou.",
 		"zip.system_software": "O software do sistema",
-		"zip.save_data": "Os dados salvos"
+		"zip.save_data": "Os dados salvos",
+		"tool.decompress_nsz.menu": "Descomprimir NSZ...",
+		"tool.decompress_nsz.help": "Faz um .nsp a partir de um .nsz: o mesmo jogo, atualização ou DLC sem nada comprimido. O Eden não consegue ler um .nsz comprimido como um único fluxo (um NSZ sólido) enquanto um jogo roda; o .nsp que isto grava ele lê como qualquer outro.",
+		"tool.decompress_nsz.input": "Arquivo comprimido (.nsz)",
+		"tool.decompress_nsz.output": "Arquivo descomprimido (.nsp)",
+		"tool.decompress_nsz.done": "Pronto: %1 arquivos comprimidos descomprimidos, %2 GB gravados.",
+		"error.tool.unknown": "Este núcleo não tem essa ferramenta.",
+		"error.tool.unreadable": "Não é possível ler %1.",
+		"error.tool.not_nsz": "%1 não é um arquivo NSZ.",
+		"error.tool.bad_ncz": "%1 dentro do arquivo está danificado, ou não é um arquivo comprimido que este núcleo conheça.",
+		"error.tool.nothing_compressed": "%1 não tem nada comprimido: pode ser usado como está.",
+		"error.tool.read_write": "Não foi possível ler ou gravar um arquivo. O disco está cheio?",
+		"error.tool.not_zstd": "%1 dentro do arquivo não se descomprime: o arquivo está danificado.",
+		"error.tool.cut_short": "%1 dentro do arquivo termina cedo demais: o arquivo está danificado.",
+		"error.solid_nsz": "%1 está comprimido como um único fluxo (um NSZ sólido), que o Eden não consegue ler enquanto um jogo roda. Faça um .nsp dele com Ferramentas > Ferramentas de cada núcleo > Eden > Descomprimir NSZ... e use esse."
 	}
 }

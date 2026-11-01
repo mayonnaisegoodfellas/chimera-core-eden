@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1 : %2 est compressé dans le fichier zip d'une façon que ce cœur ne lit pas.",
 		"error.zlib_failed": "Le fichier zip n'a pas pu être décompressé, car zlib n'a pas démarré.",
 		"zip.system_software": "Le logiciel système",
-		"zip.save_data": "Les données de sauvegarde"
+		"zip.save_data": "Les données de sauvegarde",
+		"tool.decompress_nsz.menu": "Décompresser un NSZ...",
+		"tool.decompress_nsz.help": "Fait un .nsp d'un .nsz : le même jeu, la même mise à jour ou le même DLC, sans rien de compressé. Eden ne peut pas lire un .nsz compressé en un seul flux (un NSZ solide) pendant qu'un jeu tourne ; le .nsp écrit ici, il le lit comme n'importe quel autre.",
+		"tool.decompress_nsz.input": "Fichier compressé (.nsz)",
+		"tool.decompress_nsz.output": "Fichier décompressé (.nsp)",
+		"tool.decompress_nsz.done": "Terminé : %1 archives compressées décompressées, %2 Go écrits.",
+		"error.tool.unknown": "Ce cœur n'a pas cet outil.",
+		"error.tool.unreadable": "%1 ne peut pas être lu.",
+		"error.tool.not_nsz": "%1 n'est pas un fichier NSZ.",
+		"error.tool.bad_ncz": "%1 dans le fichier est endommagé, ou n'est pas une archive compressée que ce cœur connaît.",
+		"error.tool.nothing_compressed": "%1 ne contient rien de compressé : il peut être utilisé tel quel.",
+		"error.tool.read_write": "Un fichier n'a pas pu être lu ou écrit. Le disque est-il plein ?",
+		"error.tool.not_zstd": "%1 dans le fichier ne se décompresse pas : le fichier est endommagé.",
+		"error.tool.cut_short": "%1 dans le fichier s'arrête trop tôt : le fichier est endommagé.",
+		"error.solid_nsz": "%1 est compressé en un seul flux (un NSZ solide), qu'Eden ne peut pas lire pendant qu'un jeu tourne. Faites-en un .nsp avec Outils > Outils propres aux cœurs > Eden > Décompresser un NSZ..., et utilisez celui-ci."
 	}
 }

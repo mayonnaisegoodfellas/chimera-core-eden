@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 v souboru zip je zabalený způsobem, který toto jádro nečte.",
 		"error.zlib_failed": "Soubor zip nešlo rozbalit, protože se knihovna zlib nespustila.",
 		"zip.system_software": "Systémový software",
-		"zip.save_data": "Uložená data"
+		"zip.save_data": "Uložená data",
+		"tool.decompress_nsz.menu": "Rozbalit NSZ...",
+		"tool.decompress_nsz.help": "Vytvoří z .nsz soubor .nsp: tutéž hru, aktualizaci nebo DLC bez komprese. Eden neumí za běhu hry číst .nsz komprimovaný jako jeden proud (pevný NSZ); .nsp zapsaný zde čte jako každý jiný.",
+		"tool.decompress_nsz.input": "Komprimovaný soubor (.nsz)",
+		"tool.decompress_nsz.output": "Rozbalený soubor (.nsp)",
+		"tool.decompress_nsz.done": "Hotovo: rozbaleno komprimovaných archivů: %1, zapsáno %2 GB.",
+		"error.tool.unknown": "Toto jádro takový nástroj nemá.",
+		"error.tool.unreadable": "%1 nelze přečíst.",
+		"error.tool.not_nsz": "%1 není soubor NSZ.",
+		"error.tool.bad_ncz": "%1 uvnitř souboru je poškozený nebo to není komprimovaný archiv, který toto jádro zná.",
+		"error.tool.nothing_compressed": "%1 neobsahuje nic komprimovaného: lze jej použít tak, jak je.",
+		"error.tool.read_write": "Soubor nebylo možné přečíst ani zapsat. Není disk plný?",
+		"error.tool.not_zstd": "%1 uvnitř souboru nelze rozbalit: soubor je poškozený.",
+		"error.tool.cut_short": "%1 uvnitř souboru končí příliš brzy: soubor je poškozený.",
+		"error.solid_nsz": "%1 je komprimovaný jako jeden proud (pevný NSZ), který Eden za běhu hry neumí číst. Vytvořte z něj .nsp pomocí Nástroje > Nástroje jader > Eden > Rozbalit NSZ... a použijte ten."
 	}
 }

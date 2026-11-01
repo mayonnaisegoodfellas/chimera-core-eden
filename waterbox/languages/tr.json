@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: zip dosyasındaki %2, bu çekirdeğin okumadığı bir biçimde sıkıştırılmış.",
 		"error.zlib_failed": "Zip dosyası açılamadı, çünkü zlib kütüphanesi başlamadı.",
 		"zip.system_software": "Sistem yazılımı",
-		"zip.save_data": "Kayıt verisi"
+		"zip.save_data": "Kayıt verisi",
+		"tool.decompress_nsz.menu": "NSZ'yi aç...",
+		"tool.decompress_nsz.help": "Bir .nsz'den .nsp yapar: aynı oyun, güncelleme ya da DLC, hiçbir şey sıkıştırılmamış olarak. Eden, oyun çalışırken tek bir akış olarak sıkıştırılmış bir .nsz'yi (katı NSZ) okuyamaz; bunun yazdığı .nsp'yi diğerleri gibi okur.",
+		"tool.decompress_nsz.input": "Sıkıştırılmış dosya (.nsz)",
+		"tool.decompress_nsz.output": "Açılmış dosya (.nsp)",
+		"tool.decompress_nsz.done": "Tamam: %1 sıkıştırılmış arşiv açıldı, %2 GB yazıldı.",
+		"error.tool.unknown": "Bu çekirdeğin böyle bir aracı yok.",
+		"error.tool.unreadable": "%1 okunamıyor.",
+		"error.tool.not_nsz": "%1 bir NSZ dosyası değil.",
+		"error.tool.bad_ncz": "Dosyanın içindeki %1 hasarlı ya da bu çekirdeğin bildiği sıkıştırılmış bir arşiv değil.",
+		"error.tool.nothing_compressed": "%1 sıkıştırılmış hiçbir şey içermiyor: olduğu gibi kullanılabilir.",
+		"error.tool.read_write": "Bir dosya okunamadı ya da yazılamadı. Disk dolu mu?",
+		"error.tool.not_zstd": "Dosyanın içindeki %1 açılmıyor: dosya hasarlı.",
+		"error.tool.cut_short": "Dosyanın içindeki %1 erken bitiyor: dosya hasarlı.",
+		"error.solid_nsz": "%1 tek bir akış olarak sıkıştırılmış (katı NSZ); Eden bunu oyun çalışırken okuyamaz. Araçlar > Çekirdeğe özel araçlar > Eden > NSZ'yi aç... ile ondan bir .nsp yapın ve onu kullanın."
 	}
 }

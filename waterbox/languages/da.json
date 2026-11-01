@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 i zip-filen er pakket på en måde, som denne kerne ikke læser.",
 		"error.zlib_failed": "Zip-filen kunne ikke pakkes ud, fordi zlib ikke ville starte.",
 		"zip.system_software": "Systemsoftwaren",
-		"zip.save_data": "Savedataene"
+		"zip.save_data": "Savedataene",
+		"tool.decompress_nsz.menu": "Udpak NSZ...",
+		"tool.decompress_nsz.help": "Laver en .nsp ud af en .nsz: det samme spil, den samme opdatering eller DLC uden komprimering. Eden kan ikke læse en .nsz, der er komprimeret som én strøm (en solid NSZ), mens et spil kører; den .nsp, dette skriver, læser den som enhver anden.",
+		"tool.decompress_nsz.input": "Komprimeret fil (.nsz)",
+		"tool.decompress_nsz.output": "Udpakket fil (.nsp)",
+		"tool.decompress_nsz.done": "Færdig: %1 komprimerede arkiver udpakket, %2 GB skrevet.",
+		"error.tool.unknown": "Denne kerne har ikke sådan et værktøj.",
+		"error.tool.unreadable": "%1 kan ikke læses.",
+		"error.tool.not_nsz": "%1 er ikke en NSZ-fil.",
+		"error.tool.bad_ncz": "%1 i filen er beskadiget eller ikke et komprimeret arkiv, som denne kerne kender.",
+		"error.tool.nothing_compressed": "%1 indeholder intet komprimeret: den kan bruges, som den er.",
+		"error.tool.read_write": "En fil kunne ikke læses eller skrives. Er disken fuld?",
+		"error.tool.not_zstd": "%1 i filen kan ikke udpakkes: filen er beskadiget.",
+		"error.tool.cut_short": "%1 i filen slutter for tidligt: filen er beskadiget.",
+		"error.solid_nsz": "%1 er komprimeret som én strøm (en solid NSZ), som Eden ikke kan læse, mens et spil kører. Lav en .nsp af den med Værktøjer > Kernespecifikke værktøjer > Eden > Udpak NSZ..., og brug den."
 	}
 }

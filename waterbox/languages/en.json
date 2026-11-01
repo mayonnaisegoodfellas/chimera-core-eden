@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 in the zip file is packed in a way this core does not read.",
 		"error.zlib_failed": "The zip file could not be unpacked, because zlib would not start.",
 		"zip.system_software": "The system software",
-		"zip.save_data": "The save data"
+		"zip.save_data": "The save data",
+		"tool.decompress_nsz.menu": "Decompress NSZ...",
+		"tool.decompress_nsz.help": "Makes an .nsp of an .nsz: the same game, update or DLC with nothing compressed. Eden cannot read an .nsz compressed as one stream (a solid NSZ) while a game plays; the .nsp this writes it reads like any other.",
+		"tool.decompress_nsz.input": "Compressed file (.nsz)",
+		"tool.decompress_nsz.output": "Decompressed file (.nsp)",
+		"tool.decompress_nsz.done": "Done: %1 compressed archives decompressed, %2 GB written.",
+		"error.tool.unknown": "This core has no such tool.",
+		"error.tool.unreadable": "%1 cannot be read.",
+		"error.tool.not_nsz": "%1 is not an NSZ file.",
+		"error.tool.bad_ncz": "%1 inside the file is damaged, or not a compressed archive this core knows.",
+		"error.tool.nothing_compressed": "%1 holds nothing compressed: it can be used as it is.",
+		"error.tool.read_write": "A file could not be read or written. Is the disk full?",
+		"error.tool.not_zstd": "%1 inside the file does not decompress: the file is damaged.",
+		"error.tool.cut_short": "%1 inside the file ends too soon: the file is damaged.",
+		"error.solid_nsz": "%1 is compressed as one stream (a solid NSZ), which Eden cannot read while a game plays. Make an .nsp of it with Tools > Core-Specific Tools > Eden > Decompress NSZ..., and use that."
 	}
 }

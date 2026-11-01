@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1：zip 文件中的 %2 采用了这个核心无法读取的压缩方式。",
 		"error.zlib_failed": "无法解压 zip 文件，因为 zlib 没有启动。",
 		"zip.system_software": "系统软件",
-		"zip.save_data": "存档数据"
+		"zip.save_data": "存档数据",
+		"tool.decompress_nsz.menu": "解压 NSZ...",
+		"tool.decompress_nsz.help": "从 .nsz 制作 .nsp：同一款游戏、更新或 DLC，但没有任何压缩。游戏运行时，Eden 无法读取以单一数据流压缩的 .nsz（固实 NSZ）；这里写出的 .nsp 它可以像其他文件一样读取。",
+		"tool.decompress_nsz.input": "压缩文件 (.nsz)",
+		"tool.decompress_nsz.output": "解压后的文件 (.nsp)",
+		"tool.decompress_nsz.done": "完成：解压了 %1 个压缩包，写入 %2 GB。",
+		"error.tool.unknown": "此核心没有这个工具。",
+		"error.tool.unreadable": "无法读取 %1。",
+		"error.tool.not_nsz": "%1 不是 NSZ 文件。",
+		"error.tool.bad_ncz": "文件中的 %1 已损坏，或者不是此核心认识的压缩包。",
+		"error.tool.nothing_compressed": "%1 中没有任何压缩内容：可以直接使用。",
+		"error.tool.read_write": "无法读取或写入文件。磁盘满了吗？",
+		"error.tool.not_zstd": "文件中的 %1 无法解压：文件已损坏。",
+		"error.tool.cut_short": "文件中的 %1 提前结束：文件已损坏。",
+		"error.solid_nsz": "%1 是以单一数据流压缩的（固实 NSZ），游戏运行时 Eden 无法读取。请用 工具(T) > 核心专用工具 > Eden > 解压 NSZ... 制作一个 .nsp，并使用它。"
 	}
 }

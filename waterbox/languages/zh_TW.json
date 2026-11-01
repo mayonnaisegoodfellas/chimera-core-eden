@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1：zip 檔案中的 %2 採用了這個核心無法讀取的壓縮方式。",
 		"error.zlib_failed": "無法解壓縮 zip 檔案，因為 zlib 沒有啟動。",
 		"zip.system_software": "系統軟體",
-		"zip.save_data": "存檔資料"
+		"zip.save_data": "存檔資料",
+		"tool.decompress_nsz.menu": "解壓縮 NSZ...",
+		"tool.decompress_nsz.help": "從 .nsz 製作 .nsp：同一款遊戲、更新或 DLC，但沒有任何壓縮。遊戲執行時，Eden 無法讀取以單一資料流壓縮的 .nsz（固實 NSZ）；這裡寫出的 .nsp 它可以像其他檔案一樣讀取。",
+		"tool.decompress_nsz.input": "壓縮檔 (.nsz)",
+		"tool.decompress_nsz.output": "解壓縮後的檔案 (.nsp)",
+		"tool.decompress_nsz.done": "完成：解壓縮了 %1 個壓縮檔，寫入 %2 GB。",
+		"error.tool.unknown": "此核心沒有這個工具。",
+		"error.tool.unreadable": "無法讀取 %1。",
+		"error.tool.not_nsz": "%1 不是 NSZ 檔案。",
+		"error.tool.bad_ncz": "檔案中的 %1 已損壞，或者不是此核心認識的壓縮檔。",
+		"error.tool.nothing_compressed": "%1 中沒有任何壓縮內容：可以直接使用。",
+		"error.tool.read_write": "無法讀取或寫入檔案。磁碟滿了嗎？",
+		"error.tool.not_zstd": "檔案中的 %1 無法解壓縮：檔案已損壞。",
+		"error.tool.cut_short": "檔案中的 %1 提前結束：檔案已損壞。",
+		"error.solid_nsz": "%1 是以單一資料流壓縮的（固實 NSZ），遊戲執行時 Eden 無法讀取。請用 工具(T) > 核心專用工具 > Eden > 解壓縮 NSZ... 製作一個 .nsp，並使用它。"
 	}
 }

@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 in het zipbestand is ingepakt op een manier die deze core niet leest.",
 		"error.zlib_failed": "Het zipbestand kon niet worden uitgepakt, omdat zlib niet wilde starten.",
 		"zip.system_software": "De systeemsoftware",
-		"zip.save_data": "De opslagdata"
+		"zip.save_data": "De opslagdata",
+		"tool.decompress_nsz.menu": "NSZ uitpakken...",
+		"tool.decompress_nsz.help": "Maakt een .nsp van een .nsz: hetzelfde spel, dezelfde update of DLC, zonder compressie. Eden kan een .nsz die als één stroom is gecomprimeerd (een solide NSZ) niet lezen terwijl een spel speelt; de .nsp die dit schrijft leest hij als elke andere.",
+		"tool.decompress_nsz.input": "Gecomprimeerd bestand (.nsz)",
+		"tool.decompress_nsz.output": "Uitgepakt bestand (.nsp)",
+		"tool.decompress_nsz.done": "Klaar: %1 gecomprimeerde archieven uitgepakt, %2 GB geschreven.",
+		"error.tool.unknown": "Deze core heeft zo'n hulpmiddel niet.",
+		"error.tool.unreadable": "%1 kan niet worden gelezen.",
+		"error.tool.not_nsz": "%1 is geen NSZ-bestand.",
+		"error.tool.bad_ncz": "%1 in het bestand is beschadigd, of geen gecomprimeerd archief dat deze core kent.",
+		"error.tool.nothing_compressed": "%1 bevat niets gecomprimeerds: het kan zo worden gebruikt.",
+		"error.tool.read_write": "Een bestand kon niet worden gelezen of geschreven. Is de schijf vol?",
+		"error.tool.not_zstd": "%1 in het bestand pakt niet uit: het bestand is beschadigd.",
+		"error.tool.cut_short": "%1 in het bestand houdt te vroeg op: het bestand is beschadigd.",
+		"error.solid_nsz": "%1 is als één stroom gecomprimeerd (een solide NSZ), die Eden niet kan lezen terwijl een spel speelt. Maak er met Extra > Hulpmiddelen per core > Eden > NSZ uitpakken... een .nsp van en gebruik die."
 	}
 }

@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: %2 està comprimit dins del fitxer zip d'una manera que aquest nucli no llegeix.",
 		"error.zlib_failed": "No s'ha pogut descomprimir el fitxer zip, perquè zlib no s'ha iniciat.",
 		"zip.system_software": "El programari del sistema",
-		"zip.save_data": "Les dades de desat"
+		"zip.save_data": "Les dades de desat",
+		"tool.decompress_nsz.menu": "Descomprimeix NSZ...",
+		"tool.decompress_nsz.help": "Fa un .nsp a partir d'un .nsz: el mateix joc, actualització o DLC sense res comprimit. L'Eden no pot llegir un .nsz comprimit com un sol flux (un NSZ sòlid) mentre es juga; el .nsp que això escriu el llegeix com qualsevol altre.",
+		"tool.decompress_nsz.input": "Fitxer comprimit (.nsz)",
+		"tool.decompress_nsz.output": "Fitxer descomprimit (.nsp)",
+		"tool.decompress_nsz.done": "Fet: %1 arxius comprimits descomprimits, %2 GB escrits.",
+		"error.tool.unknown": "Aquest nucli no té aquesta eina.",
+		"error.tool.unreadable": "No es pot llegir %1.",
+		"error.tool.not_nsz": "%1 no és un fitxer NSZ.",
+		"error.tool.bad_ncz": "%1 dins del fitxer està malmès, o no és un arxiu comprimit que aquest nucli conegui.",
+		"error.tool.nothing_compressed": "%1 no té res comprimit: es pot fer servir tal com és.",
+		"error.tool.read_write": "No s'ha pogut llegir o escriure un fitxer. El disc és ple?",
+		"error.tool.not_zstd": "%1 dins del fitxer no es descomprimeix: el fitxer està malmès.",
+		"error.tool.cut_short": "%1 dins del fitxer s'acaba massa aviat: el fitxer està malmès.",
+		"error.solid_nsz": "%1 està comprimit com un sol flux (un NSZ sòlid), que l'Eden no pot llegir mentre es juga. Feu-ne un .nsp amb Eines > Eines pròpies dels nuclis > Eden > Descomprimeix NSZ... i feu servir aquest."
 	}
 }

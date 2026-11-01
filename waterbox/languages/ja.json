@@ -51,6 +51,20 @@
 		"error.zip_entry_method": "%1: zip ファイル内の %2 は、このコアが読めない方法で圧縮されています。",
 		"error.zlib_failed": "zlib が起動しなかったため、zip ファイルを展開できませんでした。",
 		"zip.system_software": "システムソフトウェア",
-		"zip.save_data": "セーブデータ"
+		"zip.save_data": "セーブデータ",
+		"tool.decompress_nsz.menu": "NSZ を展開...",
+		"tool.decompress_nsz.help": ".nsz から .nsp を作ります: 同じゲーム、アップデート、DLC を、何も圧縮していない形で。Eden はゲームの実行中に、ひとつのストリームとして圧縮された .nsz (ソリッド NSZ) を読めません。ここで書かれた .nsp は、ほかの .nsp と同じように読めます。",
+		"tool.decompress_nsz.input": "圧縮ファイル (.nsz)",
+		"tool.decompress_nsz.output": "展開したファイル (.nsp)",
+		"tool.decompress_nsz.done": "完了: %1 個の圧縮アーカイブを展開し、%2 GB を書き込みました。",
+		"error.tool.unknown": "このコアにはそのツールがありません。",
+		"error.tool.unreadable": "%1 を読めません。",
+		"error.tool.not_nsz": "%1 は NSZ ファイルではありません。",
+		"error.tool.bad_ncz": "ファイル内の %1 は壊れているか、このコアの知らない圧縮アーカイブです。",
+		"error.tool.nothing_compressed": "%1 には圧縮されたものがありません: そのまま使えます。",
+		"error.tool.read_write": "ファイルを読み書きできませんでした。ディスクがいっぱいではありませんか?",
+		"error.tool.not_zstd": "ファイル内の %1 を展開できません: ファイルが壊れています。",
+		"error.tool.cut_short": "ファイル内の %1 が途中で終わっています: ファイルが壊れています。",
+		"error.solid_nsz": "%1 はひとつのストリームとして圧縮されています (ソリッド NSZ)。Eden はゲームの実行中にこれを読めません。ツール(T) > コア固有のツール > Eden > NSZ を展開... で .nsp を作り、そちらを使ってください。"
 	}
 }

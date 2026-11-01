@@ -22,6 +22,9 @@
 #include <sys/mman.h>
 #include <zlib.h>
 
+// whether a file is an NSZ with an archive compressed as one stream (nsz_tool.cpp)
+bool chimera_solid_nsz(const char *path);
+
 #ifdef CHIMERA_GUEST
 #include <emulibc.h>
 #endif
@@ -951,6 +954,16 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
             name.erase(0, slash + 1);
         return name;
     };
+    // a solid NSZ: refused by name, with what to do (nsz_tool.cpp)
+    if (chimera_solid_nsz(game.c_str())) {
+        error = std::string("error.solid_nsz" TEXT_ARG) + base_name(game);
+        return false;
+    }
+    for (const std::string &file : options.content)
+        if (chimera_solid_nsz(file.c_str())) {
+            error = std::string("error.solid_nsz" TEXT_ARG) + base_name(file);
+            return false;
+        }
     const std::string rom = tree + "/rom/" + base_name(game);
     if (!chimera::memfs::graft(rom, game)) {
         error = std::string("error.game_unreadable" TEXT_ARG) + game;
