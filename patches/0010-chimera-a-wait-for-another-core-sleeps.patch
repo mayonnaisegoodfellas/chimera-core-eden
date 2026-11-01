@@ -1,0 +1,53 @@
+diff --git a/src/core/hle/kernel/k_thread.cpp b/src/core/hle/kernel/k_thread.cpp
+--- a/src/core/hle/kernel/k_thread.cpp
++++ b/src/core/hle/kernel/k_thread.cpp
+@@ -685,6 +685,7 @@
+         {
+             bool retry_update{};
+             do {
++              {
+                 // Lock the scheduler.
+                 KScopedSchedulerLock sl(kernel);
+ 
+@@ -723,6 +724,16 @@
+                         retry_update = true;
+                     }
+                 }
++              }
++#ifdef CHIMERA
++                // Chimera: the four cores take turns on one host thread, so a thread
++                // current on another core stops being current only when that core
++                // runs. Asking again at once would ask for ever: sleep a moment
++                // instead, so this core idles and the others get their turn.
++                if (retry_update) {
++                    Core::ChimeraGuestSleep(1000);
++                }
++#endif
+             } while (retry_update);
+         }
+ 
+@@ -881,6 +892,7 @@
+ 
+             bool thread_is_current{};
+             do {
++              {
+                 // Lock the scheduler.
+                 KScopedSchedulerLock sl(kernel);
+ 
+@@ -909,6 +921,16 @@
+                         }
+                     }
+                 }
++              }
++#ifdef CHIMERA
++                // Chimera: the four cores take turns on one host thread, so a thread
++                // current on another core stops being current only when that core
++                // runs. Asking again at once would ask for ever: sleep a moment
++                // instead, so this core idles and the others get their turn.
++                if (thread_is_current) {
++                    Core::ChimeraGuestSleep(1000);
++                }
++#endif
+             } while (thread_is_current);
+         }
+ 

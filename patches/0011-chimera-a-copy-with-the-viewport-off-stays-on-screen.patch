@@ -1,0 +1,37 @@
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.cpp b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+--- a/src/video_core/renderer_opengl/gl_rasterizer.cpp
++++ b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+@@ -866,7 +866,13 @@
+         if (regs.window_origin.flip_y != 0) {
+             flip_faces = !flip_faces;
+         }
++#ifdef CHIMERA
++        // (the viewport's scale counts only while the viewport is used: see
++        // the flip below)
++        if (regs.viewport_scale_offset_enabled != 0 && regs.viewport_transform[0].scale_y < 0.0f) {
++#else
+         if (regs.viewport_transform[0].scale_y < 0.0f) {
++#endif
+             flip_faces = !flip_faces;
+         }
+         if (flip_faces) {
+@@ -885,7 +891,19 @@
+         flags[Dirty::ClipControl] = false;
+ 
+         bool flip_y = false;
++#ifdef CHIMERA
++        // With the viewport turned off a shader's positions are pixels of
++        // the drawing area (the shader divides them by its size), and only
++        // the window origin says where row 0 is, as in the Vulkan renderer.
++        // The viewport's scale then holds whatever an earlier draw left
++        // there: a negative one turned the picture upside down inside the
++        // drawing area, which can be far larger than the picture (a game
++        // copying its last picture to the screen with a 16384x16384 area
++        // drew it 15,000 rows below the screen, and the screen stayed black).
++        if (regs.viewport_scale_offset_enabled != 0 && regs.viewport_transform[0].scale_y < 0.0f) {
++#else
+         if (regs.viewport_transform[0].scale_y < 0.0f) {
++#endif
+             flip_y = !flip_y;
+         }
+         const bool lower_left{regs.window_origin.mode != Maxwell::WindowOrigin::Mode::UpperLeft};

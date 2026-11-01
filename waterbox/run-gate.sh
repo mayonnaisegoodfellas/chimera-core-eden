@@ -529,5 +529,57 @@ else
 	skip "a project in chimera-run: no $engine or no build/package/eden.chimeraCore"
 fi
 
+# 10. Games that once failed, each in a folder of its own under
+# build/test-games (or EDEN_TEST_GAMES), run in the sandbox with the keys and
+# system software above. A test whose folder holds no game SKIPs.
+games="${EDEN_TEST_GAMES:-$root/build/test-games}"
+# <folder>: the game in that folder, or nothing
+game_in() { ls "$games/$1"/*.nsp "$games/$1"/*.xci 2>/dev/null | head -1; }
+# <folder> <frames> [options...]: like sandboxed, with that folder's game
+sandboxed_game() {
+	name="$1"; frames="$2"; shift 2
+	g="$(game_in "$name")"
+	if [ "$have_fw" = 1 ]; then set -- --firmware "firmware.zip=$firmware" "$@"; fi
+	"$wbx" "$core" "$g" --work "$work/$name-work" $fw --frames "$frames" --digest-every 100 "$@" \
+		>"$work/$name.out" 2>"$work/$name.err"
+	echo $?
+}
+
+# 10a. viewport-off: a game whose last draw of a frame, the copy of its
+# picture onto the screen, turns the viewport off (its positions are then
+# pixels) and draws in an area far larger than the screen. The OpenGL renderer
+# still flipped that draw by the scale an earlier draw had left in the
+# viewport, onto rows far below the screen, and the screen stayed black
+# (patch 0011). MARVEL Cosmic Invasion does this from its first logo on; at
+# frame 1000 it shows its studio's logo on white.
+if [ -n "$(game_in viewport-off)" ]; then
+	r=$(sandboxed_game viewport-off 1100 --timeout 1800 --screenshot "1000=$work/viewport-off-1000.tga")
+	lit=$(python3 "$here/tests/lit-pixels.py" "$work/viewport-off-1000.tga" 2>/dev/null || echo 0)
+	if [ "$r" = 0 ] && [ "$lit" -gt 100000 ]; then
+		pass "viewport-off: the picture at frame 1000 has $lit pixels that are not black"
+	else
+		fail "viewport-off (exit $r): the picture at frame 1000 has $lit pixels that are not black (more than 100000 expected); see build/gate/viewport-off.err"
+	fi
+else
+	skip "viewport-off: no game in ${games#$root/}/viewport-off"
+fi
+
+# 10b. core-wait: a game that pauses one of its threads while that thread is
+# running on another of the console's four cores. Here the four cores take
+# turns on one thread, so the core asking waited for ever for the other to
+# run, and no frame ended (patch 0010). PAC-MAN CHAMPIONSHIP EDITION 2 PLUS
+# does it at start; at frame 500 it shows the developer's name on black.
+if [ -n "$(game_in core-wait)" ]; then
+	r=$(sandboxed_game core-wait 950 --timeout 600 --screenshot "500=$work/core-wait-500.tga")
+	lit=$(python3 "$here/tests/lit-pixels.py" "$work/core-wait-500.tga" 2>/dev/null || echo 0)
+	if [ "$r" = 0 ] && grep -q '^app=.* frames=950 ' "$work/core-wait.out" && [ "$lit" -gt 5000 ]; then
+		pass "core-wait: 950 frames, and the picture at frame 500 has $lit pixels that are not black"
+	else
+		fail "core-wait (exit $r): $(grep -c '^frame ' "$work/core-wait.out") frames reported, $lit pixels that are not black at frame 500; see build/gate/core-wait.err"
+	fi
+else
+	skip "core-wait: no game in ${games#$root/}/core-wait"
+fi
+
 echo "$fails failed"
 exit "$fails"
