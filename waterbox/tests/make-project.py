@@ -5,10 +5,11 @@
                     [--set=<setting>=<value>]... [--firmware=<id>=<file>]...
                     <slot>=<file>...
 
-A project mounts each file in its slot under its own name, which the bare
-file chimera-run is otherwise given never does. The input log is the
-harness script (gate-harness.h) as rows of this package's controls, with the
-LogKey the engine reads them by. The firmware is pinned by the hash of the
+A project is a zip of project.json and input.input, the input's lines one
+a frame. It mounts each file in its slot under its own name, which the bare
+file chimera-run is otherwise given never does. The input is the harness
+script (gate-harness.h) as rows of this package's controls, in the columns
+the engine reads them by. The firmware is pinned by the hash of the
 file given for it, as the wizard pins it; the files themselves come from
 chimera-run's --firmware.
 """
@@ -22,9 +23,9 @@ import zipfile
 
 def inputs_of(log):
     """A movie's text block ("[Input]", "LogKey:...", its entries, "[/Input]")
-    as a project file's "inputs": the key's groups of column names, and one
-    entry a frame. A group starts where a '#' begins a name; a name ends at
-    '|' (as Chimera splits a key)."""
+    as a project's "inputs" (the key's groups of column names) and its
+    entries, one a frame. A group starts where a '#' begins a name; a name
+    ends at '|' (as Chimera splits a key)."""
     lines = log.splitlines()
     out = {}
     key = next((l[len("LogKey:"):] for l in lines if l.startswith("LogKey:")), None)
@@ -39,8 +40,7 @@ def inputs_of(log):
                 groups[-1].append(key[at:bar])
                 at = bar + 1
         out["columns"] = groups
-    out["entries"] = [l for l in lines if l.startswith("|")]
-    return out
+    return out, [l for l in lines if l.startswith("|")]
 
 # the rows are make-movie.py's (its name has a dash: loaded by path)
 spec = importlib.util.spec_from_file_location(
@@ -102,17 +102,17 @@ def main():
             sys.exit("make-project.py: %s is required; say which file with --firmware=%s=<file>" % (d["id"], d["id"]))
 
     game = next((f for f in files if f["slot"] == cfg.get("romFile", "game")), files[0] if files else None)
+    columns, entries = inputs_of(log)
     project = {
         "id": "eden-gate-01",
         "title": "Switch through Chimera",
-        "description": "written by waterbox/tests/make-project.py",
         "core": {"name": cfg["coreName"], "version": "", "sha1": ""},
         "rerecords": 0,
         "files": files,
         "settings": settings,
         "firmware": firmware,
         "coreCache": [],
-        "inputs": inputs_of(log),
+        "inputs": columns,
         "markers": [],
         "branches": [],
         "headers": {
@@ -124,8 +124,9 @@ def main():
             "VsyncDenominator": str(cfg["video"]["vsyncDenominator"]),
         },
     }
-    with open(out, "w") as f:
-        json.dump(project, f, indent="\t")
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("project.json", json.dumps(project, indent="\t"))
+        z.writestr("input.input", "".join(e + "\n" for e in entries))
     return 0
 
 
