@@ -633,5 +633,25 @@ else
 	skip "decompress-nsz: no .nsz and .nsp in ${games#$root/}/decompress-nsz, or no package"
 fi
 
+# 10d. update-data: a game in build/test-games/update-data and its update in
+# update-data/content. When the game opens its data, Eden lays the update's
+# data over the game's, but only for a game it was told about, as its game
+# list tells it of every game. The driver told it only of the update, so the
+# update's code read the first release's data. Baki Hanma Blood Arena 2.0.4
+# then ran out of stack at start and stayed black; at frame 1200 it shows
+# its title screen.
+update="$(ls "$games/update-data/content"/*.nsp 2>/dev/null | head -1)"
+if [ -n "$(game_in update-data)" ] && [ -n "$update" ]; then
+	r=$(sandboxed_game update-data 1300 --timeout 3600 --content "$update" --screenshot "1200=$work/update-data-1200.tga")
+	lit=$(python3 "$here/tests/lit-pixels.py" "$work/update-data-1200.tga" 2>/dev/null || echo 0)
+	if [ "$r" = 0 ] && [ "$lit" -gt 100000 ]; then
+		pass "update-data: the picture at frame 1200 has $lit pixels that are not black"
+	else
+		fail "update-data (exit $r): the picture at frame 1200 has $lit pixels that are not black (more than 100000 expected); see build/gate/update-data.err"
+	fi
+else
+	skip "update-data: no game in ${games#$root/}/update-data or no update in update-data/content"
+fi
+
 echo "$fails failed"
 exit "$fails"

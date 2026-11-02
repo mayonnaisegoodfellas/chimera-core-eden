@@ -1,0 +1,90 @@
+diff --git a/src/video_core/gpu.cpp b/src/video_core/gpu.cpp
+--- a/src/video_core/gpu.cpp
++++ b/src/video_core/gpu.cpp
+@@ -125,6 +125,7 @@
+         BindRenderer(std::move(renderer_));
+         auto* const rasterizer = renderer->ReadRasterizer();
+         system.Host1x().memory_manager.ChimeraResetCaching();
++        Tegra::MemoryManager::ChimeraRebindAll(rasterizer);
+         gpu_thread.StartThread(*renderer, renderer->Context(), scheduler);
+         for (auto& [id, channel] : channels) {
+             if (!channel->initialized) {
+diff --git a/src/video_core/memory_manager.cpp b/src/video_core/memory_manager.cpp
+--- a/src/video_core/memory_manager.cpp
++++ b/src/video_core/memory_manager.cpp
+@@ -5,6 +5,8 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include <algorithm>
++#include <mutex>
++#include <vector>
+ 
+ #include "common/alignment.h"
+ #include "common/assert.h"
+@@ -26,6 +28,25 @@
+ 
+ std::atomic<size_t> MemoryManager::unique_identifier_generator{};
+ 
++#ifdef CHIMERA
++namespace {
++// every address space alive, so a renderer made again reaches each one: a
++// channel rebinds its own, but a game can map memory into an address space
++// before any channel uses it, which then kept the renderer that was freed
++std::mutex chimera_all_mutex;
++std::vector<MemoryManager*> chimera_all;
++} // namespace
++
++void MemoryManager::ChimeraRebindAll(VideoCore::RasterizerInterface* rasterizer_) {
++    std::scoped_lock lock{chimera_all_mutex};
++    for (MemoryManager* const manager : chimera_all) {
++        if (manager->rasterizer != nullptr) {
++            manager->BindRasterizer(rasterizer_);
++        }
++    }
++}
++#endif
++
+ MemoryManager::MemoryManager(Core::System& system_, MaxwellDeviceMemoryManager& memory_, u64 address_space_bits_, GPUVAddr split_address_, u64 big_page_bits_, u64 page_bits_)
+     : system{system_}, memory{memory_}, address_space_bits{address_space_bits_}
+     , split_address{split_address_}, page_bits{page_bits_}, big_page_bits{big_page_bits_}
+@@ -50,13 +71,24 @@
+     big_entries.resize(big_page_table_size / 32, 0);
+     big_page_continuous.resize(big_page_table_size / continuous_bits, 0);
+     entries.resize(page_table_size / 32, 0);
++#ifdef CHIMERA
++    std::scoped_lock lock{chimera_all_mutex};
++    chimera_all.push_back(this);
++#endif
+ }
+ 
+ MemoryManager::MemoryManager(Core::System& system_, u64 address_space_bits_, GPUVAddr split_address_, u64 big_page_bits_, u64 page_bits_)
+     : MemoryManager(system_, system_.Host1x().MemoryManager(), address_space_bits_, split_address_, big_page_bits_, page_bits_)
+ {}
+ 
++#ifdef CHIMERA
++MemoryManager::~MemoryManager() {
++    std::scoped_lock lock{chimera_all_mutex};
++    std::erase(chimera_all, this);
++}
++#else
+ MemoryManager::~MemoryManager() = default;
++#endif
+ 
+ MemoryManager::EntryType MemoryManager::GetEntry(size_t position, bool is_big_page) const {
+     if (is_big_page) {
+diff --git a/src/video_core/memory_manager.h b/src/video_core/memory_manager.h
+--- a/src/video_core/memory_manager.h
++++ b/src/video_core/memory_manager.h
+@@ -52,6 +52,12 @@
+     /// Binds a renderer to the memory manager.
+     void BindRasterizer(VideoCore::RasterizerInterface* rasterizer);
+ 
++#ifdef CHIMERA
++    /// Binds a renderer made again to every address space that had one,
++    /// including those no channel uses yet.
++    static void ChimeraRebindAll(VideoCore::RasterizerInterface* rasterizer);
++#endif
++
+     [[nodiscard]] std::optional<DAddr> GpuToCpuAddress(GPUVAddr addr) const;
+ 
+     [[nodiscard]] std::optional<DAddr> GpuToCpuAddress(GPUVAddr addr, std::size_t size) const;

@@ -43,6 +43,7 @@ bool chimera_solid_nsz(const char *path);
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/cpu_manager.h"
+#include "core/file_sys/content_archive.h"
 #include "core/file_sys/registered_cache.h"
 #include "core/file_sys/vfs/vfs_real.h"
 #include "core/frontend/emu_window.h"
@@ -1069,6 +1070,22 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
         if (!file || !g_machine->content.AddEntriesFromContainer(file, true)) {
             error = std::string("error.not_content" TEXT_ARG) + base_name(options.content[i]);
             return false;
+        }
+    }
+    // The game itself too, as Eden's game list registers each game it
+    // lists: when the game opens its data, Eden looks the game's program up
+    // here to lay the update's data over it. Without it an updated game ran
+    // the update's code on the first release's data.
+    if (const auto file = system.GetFilesystem()->OpenFile(rom, FileSys::OpenMode::Read)) {
+        const Loader::FileType type = Loader::IdentifyFile(file);
+        if (type == Loader::FileType::NCA) {
+            const FileSys::NCA nca{file};
+            if (nca.GetStatus() == Loader::ResultStatus::Success)
+                g_machine->content.AddEntry(FileSys::TitleType::Application,
+                    FileSys::GetCRTypeFromNCAType(nca.GetType()), nca.GetTitleId(), file);
+        } else if (type == Loader::FileType::NSP || type == Loader::FileType::NSZ
+                   || type == Loader::FileType::XCI || type == Loader::FileType::XCZ) {
+            g_machine->content.AddEntriesFromContainer(file);
         }
     }
     system.RegisterContentProvider(FileSys::ContentProviderUnionSlot::FrontendManual, &g_machine->content);
