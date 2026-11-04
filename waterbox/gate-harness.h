@@ -9,7 +9,7 @@
  *        [--log-filter F] [--rerecord] [--save-state FILE] [--state FILE]
  *        (states: run-wbx only) [--input FILE] [--audio-out FILE]
  *        [--savedata-in ZIP] [--savedata-out DIR] [--turbo A:B]
- *        [--content NSP]... [--resolution R]
+ *        [--content NSP]... [--mod FILE]... [--resolution R]
  *
  * --rerecord saves and loads a state before every frame; --save-state writes
  * the machine after the last frame, --state starts from one, so another
@@ -27,7 +27,8 @@
  * 48 kHz. --firmware mounts a file under a firmware id, as the frontend
  * does. --turbo turns rendering off for frames A..B-1. --renderer is
  * opengl-hw (the default) or null. --content puts an update or DLC .nsp in
- * the project's "content" slot (any number, in order). --resolution is the
+ * the project's "content" slot (any number, in order), --mod a mod (a
+ * .pchtxt, .ips or .zip) in its "mods" slot. --resolution is the
  * internal resolution setting (1x, the default, 1.5x, 2x or 3x).
  *
  * Lines: "frame F time_ns=T ticks=K video=H audio=H/N" every --digest-every
@@ -53,6 +54,7 @@
 #define HARNESS_AXES 10
 #define HARNESS_MAX_INPUT 4096
 #define HARNESS_MAX_CONTENT 16
+#define HARNESS_MAX_MODS 16
 
 struct harness_opts {
 	const char *app;
@@ -70,6 +72,8 @@ struct harness_opts {
 	uint64_t turbo_from, turbo_to;
 	int content_n;
 	const char *content[HARNESS_MAX_CONTENT];
+	int mod_n;
+	const char *mod[HARNESS_MAX_MODS];
 	int shots;
 	uint64_t shot_frame[HARNESS_MAX_SHOTS];
 	const char *shot_path[HARNESS_MAX_SHOTS];
@@ -130,6 +134,8 @@ static int harness_parse(int argc, char **argv, struct harness_opts *o)
 		else if (!strcmp(a, "--savedata-out") && i + 1 < argc) o->savedata_out = argv[++i];
 		else if (!strcmp(a, "--content") && i + 1 < argc && o->content_n < HARNESS_MAX_CONTENT)
 			o->content[o->content_n++] = argv[++i];
+		else if (!strcmp(a, "--mod") && i + 1 < argc && o->mod_n < HARNESS_MAX_MODS)
+			o->mod[o->mod_n++] = argv[++i];
 		else if (!strcmp(a, "--firmware") && i + 1 < argc && o->firmware_n < 4) {
 			char *spec = argv[++i], *eq = strchr(spec, '=');
 			if (!eq) { fprintf(stderr, "--firmware wants ID=PATH\n"); return 0; }
@@ -156,7 +162,7 @@ static int harness_parse(int argc, char **argv, struct harness_opts *o)
 			" [--firmware firmware.zip=PATH] [--frames N] [--timeout S] [--digest-every N] [--ram-every N]"
 			" [--screenshot F=PATH]... [--rtc-start S] [--docked] [--renderer R] [--log-filter F] [--rerecord]"
 			" [--save-state FILE] [--state FILE] [--input FILE] [--audio-out FILE] [--savedata-in ZIP]"
-			" [--savedata-out DIR] [--turbo A:B] [--content NSP]... [--resolution R]\n", argv[0]);
+			" [--savedata-out DIR] [--turbo A:B] [--content NSP]... [--mod FILE]... [--resolution R]\n", argv[0]);
 		return 0;
 	}
 	return 1;
@@ -185,6 +191,8 @@ static inline void harness_absolute(struct harness_opts *o)
 		o->firmware_path[f] = harness_abs(o->firmware_path[f]);
 	for (int f = 0; f < o->content_n; f++)
 		o->content[f] = harness_abs(o->content[f]);
+	for (int f = 0; f < o->mod_n; f++)
+		o->mod[f] = harness_abs(o->mod[f]);
 	for (int s = 0; s < o->shots; s++)
 		o->shot_path[s] = harness_abs(o->shot_path[s]);
 }
@@ -255,9 +263,9 @@ static const char *harness_base(const char *path)
 }
 
 /* The slot map a project would mount: the app (named `game`, as the runner
- * mounts it), the save data zip under its own name, and the updates and DLC
- * under theirs (`paths`: as the paths given, for a runner that mounts
- * nothing). */
+ * mounts it), the save data zip under its own name, and the updates, DLC
+ * and mods under theirs (`paths`: as the paths given, for a runner that
+ * mounts nothing). */
 static void harness_slots(const struct harness_opts *o, const char *game, int paths, char *buf, size_t n)
 {
 	int k = snprintf(buf, n, "{\"game\": [\"%s\"]", game);
@@ -266,6 +274,12 @@ static void harness_slots(const struct harness_opts *o, const char *game, int pa
 		k += snprintf(buf + k, n - k, ", \"content\": [");
 		for (int f = 0; f < o->content_n; f++)
 			k += snprintf(buf + k, n - k, "%s\"%s\"", f ? ", " : "", paths ? o->content[f] : harness_base(o->content[f]));
+		k += snprintf(buf + k, n - k, "]");
+	}
+	if (o->mod_n) {
+		k += snprintf(buf + k, n - k, ", \"mods\": [");
+		for (int f = 0; f < o->mod_n; f++)
+			k += snprintf(buf + k, n - k, "%s\"%s\"", f ? ", " : "", paths ? o->mod[f] : harness_base(o->mod[f]));
 		k += snprintf(buf + k, n - k, "]");
 	}
 	snprintf(buf + k, n - k, "}");

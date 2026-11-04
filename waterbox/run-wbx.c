@@ -171,6 +171,12 @@ int main(int argc, char **argv)
 		wbx_mount_file_path(g_host, contentname[f], o.content[f], &r);
 		if (r.error_message[0]) { fprintf(stderr, "mount %s: %s\n", contentname[f], r.error_message); return 1; }
 	}
+	for (int f = 0; f < o.mod_n; f++) {
+		static char modname[HARNESS_MAX_MODS][1024];
+		snprintf(modname[f], sizeof modname[f], "/%s", harness_base(o.mod[f]));
+		wbx_mount_file_path(g_host, modname[f], o.mod[f], &r);
+		if (r.error_message[0]) { fprintf(stderr, "mount %s: %s\n", modname[f], r.error_message); return 1; }
+	}
 	wbx_activate_host(g_host, &r);
 
 	/* the GPU bridge, handed over before Init */

@@ -211,6 +211,8 @@ ECL_EXPORT int Init(void) {
     options.savedata = mounted(slot_first(slots, "savedata"));
     for (const std::string &name : slot_all(slots, "content"))
         options.content.push_back(mounted(name));
+    for (const std::string &name : slot_all(slots, "mods"))
+        options.mods.push_back(mounted(name));
     return chimera_eden::boot(name, options, g_error) ? 1 : 0;
 }
 

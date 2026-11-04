@@ -43,6 +43,7 @@ bool chimera_solid_nsz(const char *path);
 #include "core/core.h"
 #include "core/core_timing.h"
 #include "core/cpu_manager.h"
+#include "core/file_sys/common_funcs.h"
 #include "core/file_sys/content_archive.h"
 #include "core/file_sys/registered_cache.h"
 #include "core/file_sys/vfs/vfs_real.h"
@@ -919,6 +920,159 @@ int64_t machine_seconds() {
 
 constexpr const char *TREE = "/chimera";
 
+// The mods the project names, into Eden's own mod folder for the game,
+// load/<program ID>/<mod>/, as Eden's "Import Mod from ZIP" leaves them. Its
+// patch manager then applies them as it applies its own: the patches in
+// exefs/ (.pchtxt and .ips) to the program whose build ID they name, romfs/
+// over the game's data, cheats/ as cheats. The folder is the game's first
+// program's, which Eden also reads for the game's other programs. Each mod's
+// folder is numbered in the project's order, the order Eden applies them in.
+// A file may be:
+//   a .pchtxt or .ips patch   one mod, its exefs/
+//   a .zip of one mod         the folder that holds exefs/, romfs/,
+//                             romfs_ext/, romfslite/ or cheats/, at any
+//                             depth (an Atmosphere layout too), or patches
+//                             with no folder
+// A zip of several mods is refused, naming them: they are often
+// alternatives (60 and 120 frames a second), and Eden asks which to take.
+bool install_mods(Core::System &system, const std::string &rom, const std::vector<std::string> &mods,
+                  std::string &error) {
+    const auto base_name = [](std::string name) {
+        if (const size_t slash = name.find_last_of('/'); slash != std::string::npos)
+            name.erase(0, slash + 1);
+        return name;
+    };
+    const auto lower = [](std::string s) {
+        for (char &c : s)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return s;
+    };
+    // "name" and "ext" (lower case) of "name.ext"
+    const auto split_ext = [&](const std::string &name) {
+        const size_t dot = name.find_last_of('.');
+        if (dot == std::string::npos)
+            return std::make_pair(name, std::string());
+        return std::make_pair(name.substr(0, dot), lower(name.substr(dot + 1)));
+    };
+    u64 program_id = 0;
+    const auto file = system.GetFilesystem()->OpenFile(rom, FileSys::OpenMode::Read);
+    const auto loader = file ? Loader::GetLoader(system, file) : nullptr;
+    if (!loader || loader->ReadProgramId(program_id) != Loader::ResultStatus::Success || program_id == 0) {
+        error = std::string("error.mods_no_program_id" TEXT_ARG) + base_name(rom);
+        return false;
+    }
+    char title[20];
+    snprintf(title, sizeof title, "%016llX", static_cast<unsigned long long>(FileSys::GetBaseTitleID(program_id)));
+    const std::string root = std::string(TREE) + "/user/load/" + title;
+
+    for (size_t i = 0; i < mods.size(); i++) {
+        const std::string name = base_name(mods[i]);
+        const auto [stem, ext] = split_ext(name);
+        std::vector<uint8_t> bytes;
+        if (!read_host_file(mods[i], bytes)) {
+            error = std::string("error.mod_unreadable" TEXT_ARG) + name;
+            return false;
+        }
+        char number[8];
+        snprintf(number, sizeof number, "%02zu ", i + 1);
+        // what goes into the mod's folder: a path in it, and the bytes
+        std::vector<std::pair<std::string, std::vector<uint8_t>>> files;
+        std::string mod_name = stem;
+        if (ext == "pchtxt") {
+            files.emplace_back("exefs/" + stem + ".pchtxt", std::move(bytes));
+        } else if (ext == "ips") {
+            // Eden takes an .ips for the program whose build ID is its name
+            if (stem.empty() || stem.size() > 64 || !std::all_of(stem.begin(), stem.end(), [](char c) {
+                    return std::isxdigit(static_cast<unsigned char>(c));
+                })) {
+                error = std::string("error.mod_ips_name" TEXT_ARG) + name;
+                return false;
+            }
+            files.emplace_back("exefs/" + upper(stem) + ".ips", std::move(bytes));
+        } else if (ext == "zip") {
+            static const std::array<std::string, 5> KINDS = {"exefs", "romfs", "romfs_ext", "romfslite", "cheats"};
+            struct Entry {
+                std::vector<std::string> parts;
+                std::vector<uint8_t> bytes;
+                size_t root = std::string::npos; // the parts before its exefs/ (or other)
+            };
+            std::vector<Entry> entries;
+            const bool ok = walk_zip(
+                bytes, name,
+                [&](const std::string &entry, std::vector<uint8_t> &&data, std::string &) {
+                    std::vector<std::string> parts = split_path(entry);
+                    if (parts.empty() || parts[0] == "__MACOSX"
+                        || std::find(parts.begin(), parts.end(), "..") != parts.end())
+                        return true;
+                    Entry e{std::move(parts), std::move(data)};
+                    for (size_t k = 0; k + 1 < e.parts.size(); k++)
+                        if (std::find(KINDS.begin(), KINDS.end(), lower(e.parts[k])) != KINDS.end()) {
+                            e.root = k;
+                            break;
+                        }
+                    entries.push_back(std::move(e));
+                    return true;
+                },
+                error);
+            if (!ok)
+                return false;
+            const auto join = [](const std::vector<std::string> &parts, size_t from, size_t to) {
+                std::string out;
+                for (size_t k = from; k < to; k++)
+                    out += (out.empty() ? "" : "/") + parts[k];
+                return out;
+            };
+            std::vector<std::string> roots;
+            for (const Entry &e : entries)
+                if (e.root != std::string::npos) {
+                    const std::string r = join(e.parts, 0, e.root);
+                    if (std::find(roots.begin(), roots.end(), r) == roots.end())
+                        roots.push_back(r);
+                }
+            if (roots.size() > 1) {
+                std::string list;
+                for (const std::string &r : roots)
+                    list += (list.empty() ? "" : ", ") + (r.empty() ? name : base_name(r));
+                error = std::string("error.mod_zip_many" TEXT_ARG) + name + TEXT_ARG + list;
+                return false;
+            }
+            if (roots.size() == 1) {
+                // named after its folder, as Eden names it, unless that is
+                // a title ID's (an Atmosphere layout) or there is none
+                const std::string &r = roots[0];
+                if (!r.empty() && r.find("atmosphere") == std::string::npos)
+                    mod_name = base_name(r);
+                for (Entry &e : entries)
+                    if (e.root != std::string::npos)
+                        files.emplace_back(join(e.parts, e.root, e.parts.size()), std::move(e.bytes));
+            } else {
+                for (Entry &e : entries) {
+                    const std::string ext2 = split_ext(e.parts.back()).second;
+                    if (ext2 == "pchtxt" || ext2 == "ips")
+                        files.emplace_back("exefs/" + e.parts.back(), std::move(e.bytes));
+                }
+                if (files.empty()) {
+                    error = std::string("error.mod_zip_unknown" TEXT_ARG) + name;
+                    return false;
+                }
+            }
+        } else {
+            error = std::string("error.mod_kind" TEXT_ARG) + name;
+            return false;
+        }
+        const std::string folder = root + "/" + number + mod_name;
+        for (auto &[path, data] : files) {
+            const std::string full = folder + "/" + path;
+            chimera::memfs::mkdirs(full.substr(0, full.find_last_of('/')));
+            if (!chimera::memfs::put(full, std::move(data))) {
+                error = std::string("error.mod_not_installed" TEXT_ARG) + name + TEXT_ARG + path;
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 bool boot(const std::string &game, const Options &options, std::string &error) {
     auto &v = Settings::values;
     v.custom_rtc_enabled.SetValue(true);
@@ -1089,6 +1243,9 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
         }
     }
     system.RegisterContentProvider(FileSys::ContentProviderUnionSlot::FrontendManual, &g_machine->content);
+    // the mods, where Eden looks for them as the game loads
+    if (!options.mods.empty() && !install_mods(system, rom, options.mods, error))
+        return false;
 
     Service::AM::FrontendAppletParameters params{
         .applet_id = Service::AM::AppletId::Application,

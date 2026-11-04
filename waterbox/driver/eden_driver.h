@@ -27,6 +27,9 @@ struct Options {
     // The game's updates and DLC (optional): .nsp files, read in place and
     // registered as Eden's own frontend registers what its game list finds
     std::vector<std::string> content;
+    // The game's mods (optional): .pchtxt and .ips patches and zips of a
+    // mod's folder, installed where Eden looks for them (see install_mods)
+    std::vector<std::string> mods;
     // Unix seconds the machine's calendar starts at; 0: 2017-03-03 (the
     // console's launch day)
     uint64_t rtc_start = 0;

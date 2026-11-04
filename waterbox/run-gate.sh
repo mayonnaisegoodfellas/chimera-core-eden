@@ -98,9 +98,11 @@ for a in axes:
     if "Touch" in a["name"] and (a["min"], a["max"], a["neutral"]) != (0, 65535, 32768):
         problems.append(a["name"] + " is not 0..65535 around 32768")
 ids = [s["id"] for s in slots["slots"]]
-if ids != ["game", "savedata", "content"]: problems.append("slots are %s" % ids)
-content = slots["slots"][-1]
-if content.get("formats") != ["nsp", "nsz"] or content.get("min") != 0: problems.append("the content slot takes %s" % content.get("formats"))
+if ids != ["game", "savedata", "content", "mods"]: problems.append("slots are %s" % ids)
+by_id = {s["id"]: s for s in slots["slots"]}
+for sid, formats in (("content", ["nsp", "nsz"]), ("mods", ["zip", "pchtxt", "ips"])):
+    s = by_id.get(sid, {})
+    if s.get("formats") != formats or s.get("min") != 0: problems.append("the %s slot takes %s" % (sid, s.get("formats")))
 # the resolutions the setting offers are the ones the driver knows, and the
 # declared picture holds the largest of them (docked, 1920x1080, at 3x)
 driver = open(here + "/driver/eden_driver.cpp").read()
@@ -566,8 +568,13 @@ games="${EDEN_TEST_GAMES:-$root/build/test-games}"
 game_in() { ls "$games/$1"/*.nsp "$games/$1"/*.xci 2>/dev/null | head -1; }
 # <folder> <frames> [options...]: like sandboxed, with that folder's game
 sandboxed_game() {
-	name="$1"; frames="$2"; shift 2
-	g="$(game_in "$name")"
+	name="$1"; shift
+	sandboxed_game_as "$name" "$name" "$@"
+}
+# <folder> <name> <frames> [options...]: the same, its work and output under
+# <name> (one game for more than one test)
+sandboxed_game_as() {
+	g="$(game_in "$1")"; name="$2"; frames="$3"; shift 3
 	if [ "$have_fw" = 1 ]; then set -- --firmware "firmware.zip=$firmware" "$@"; fi
 	"$wbx" "$core" "$g" --work "$work/$name-work" $fw --frames "$frames" --digest-every 100 "$@" \
 		>"$work/$name.out" 2>"$work/$name.err"
@@ -709,6 +716,70 @@ if [ -n "$(game_in lower-left-origin)" ]; then
 	fi
 else
 	skip "lower-left-origin: no game in ${games#$root/}/lower-left-origin"
+fi
+
+# 10g. mods: the mods of a project reach the game, and Eden applies them as it
+# applies its own (the driver's install_mods). The lower-left-origin game
+# (Tomb Raider I-III Remastered, first release) with mods made here, each a zip
+# laid out as mods are shared ([name]/romfs/... and [name]/exefs/*.pchtxt):
+# - one that replaces the licence agreement's English text with two headings
+#   of its own (romfs): at frame 1000 the agreement shows those headings in
+#   yellow and none of the original's white text (26641 white pixels in rows
+#   190-529 without the mod);
+# - one with a patch for this build of the program (and one for a build that
+#   does not exist) that makes the program's main function end the program
+#   (svc 0x7 at nnMain): the game exits by itself in its first frames, where
+#   without the mod it runs to frame 1000 (10f);
+# - a zip of two mods, which is refused with both their names.
+if [ -n "$(game_in lower-left-origin)" ]; then
+	mods="$work/mods"
+	rm -rf "${mods:?}"; mkdir -p "$mods"
+	python3 - "$mods" <<'EOF'
+import sys
+import zipfile
+def patch(build_id):
+    return ("@nsobid-%s\n@flag offset_shift 0x100\n@enabled\n" % build_id
+            + "000050B0 E10000D4\n@stop\n")
+def zipped(name, files):
+    with zipfile.ZipFile(sys.argv[1] + "/" + name, "w", zipfile.ZIP_DEFLATED) as z:
+        for path, text in files.items():
+            z.writestr(path, text)
+zipped("licence-text.zip", {
+    "readme.txt": "made by the test script\n",
+    "[Licence Text]/romfs/1/TEXT/EN/EULA.TXT": "-CHIMERA MOD TEST\r\n-A MOD IN THE PROJECT REPLACED THIS TEXT\r\n"})
+zipped("end-at-start.zip", {
+    "[End At Start]/exefs/1.0.0.pchtxt": patch("27DBB05C913571B50CDC2315E0103F8AC88688C1"),
+    "[End At Start]/exefs/other.pchtxt": patch("0000000000000000000000000000000000000001")})
+zipped("two-mods.zip", {
+    "[60FPS]/exefs/1.0.0.pchtxt": patch("0000000000000000000000000000000000000001"),
+    "[120FPS]/exefs/1.0.0.pchtxt": patch("0000000000000000000000000000000000000001")})
+EOF
+	r=$(sandboxed_game_as lower-left-origin mods-romfs 1000 --timeout 1800 --mod "$mods/licence-text.zip" \
+		--screenshot "1000=$work/mods-romfs-1000.tga")
+	# white and yellow pixels: the original's text, and the mod's headings
+	body=$(python3 "$here/tests/text-colours.py" "$work/mods-romfs-1000.tga" 160 190 1110 530 2>/dev/null | cut -d' ' -f1)
+	headings=$(python3 "$here/tests/text-colours.py" "$work/mods-romfs-1000.tga" 160 90 1110 160 2>/dev/null | cut -d' ' -f2)
+	body=${body:--1}; headings=${headings:--1}
+	if [ "$r" = 0 ] && [ "$body" -ge 0 ] && [ "$body" -lt 1000 ] && [ "$headings" -gt 1800 ]; then
+		pass "mods: with a mod replacing the licence agreement's text, frame 1000 shows $headings yellow pixels of its headings and $body white ones of the original text"
+	else
+		fail "mods (exit $r): with a mod replacing the licence agreement's text, frame 1000 shows $headings yellow pixels in rows 90-159 (more than 1800 expected) and $body white ones in rows 190-529 (fewer than 1000 expected); see build/gate/mods-romfs.err"
+	fi
+	r=$(sandboxed_game_as lower-left-origin mods-exefs 300 --timeout 900 --mod "$mods/end-at-start.zip")
+	ran=$(sed -n 's/^app=.* frames=\([0-9]*\) .*/\1/p' "$work/mods-exefs.out")
+	if [ "$r" = 0 ] && [ -n "$ran" ] && [ "$ran" -lt 100 ]; then
+		pass "mods: with a patch that ends the program at its main function, the game exits by itself after $ran frames"
+	else
+		fail "mods (exit $r): with a patch that ends the program at its main function, the game ran ${ran:-no} frames (fewer than 100 expected); see build/gate/mods-exefs.err"
+	fi
+	r=$(sandboxed_game_as lower-left-origin mods-two 10 --timeout 600 --mod "$mods/two-mods.zip")
+	if [ "$r" != 0 ] && grep -q 'error\.mod_zip_many' "$work/mods-two.err" && grep -q '\[60FPS\], \[120FPS\]' "$work/mods-two.err"; then
+		pass "mods: a zip of two mods is refused, naming both"
+	else
+		fail "mods (exit $r): a zip of two mods was not refused with both their names; see build/gate/mods-two.err"
+	fi
+else
+	skip "mods: no game in ${games#$root/}/lower-left-origin"
 fi
 
 echo "$fails failed"

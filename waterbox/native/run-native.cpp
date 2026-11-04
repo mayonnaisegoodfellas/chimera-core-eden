@@ -88,6 +88,14 @@ int main(int argc, char **argv) {
         }
         o.content[f] = full;
     }
+    for (int f = 0; f < o.mod_n; f++) {
+        char *full = realpath(o.mod[f], nullptr);
+        if (!full) {
+            perror(o.mod[f]);
+            return 4;
+        }
+        o.mod[f] = full;
+    }
     harness_slots(&o, app, 1, slots, sizeof slots);
     if (!write_file(work + "/rom.name", app) || !write_file(work + "/settings", settings) || !write_file(work + "/slots", slots)) {
         fprintf(stderr, "cannot write the work directory\n");

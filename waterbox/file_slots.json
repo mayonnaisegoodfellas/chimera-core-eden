@@ -1,5 +1,5 @@
 {
-  "_comment": "This file lists the kinds of file a project of this core can hold. Chimera's New Project window is built from it. A Switch project is one game, plus whatever the game has already saved, and its updates and DLC. The console's keys and its system software are firmware.",
+  "_comment": "This file lists the kinds of file a project of this core can hold. Chimera's New Project window is built from it. A Switch project is one game, plus whatever the game has already saved, its updates and DLC, and its mods. The console's keys and its system software are firmware.",
   "slots": [
     {
       "id": "game",
@@ -36,6 +36,18 @@
         "nsz"
       ],
       "help": "slot.content.help"
+    },
+    {
+      "id": "mods",
+      "title": "slot.mods",
+      "min": 0,
+      "max": 64,
+      "formats": [
+        "zip",
+        "pchtxt",
+        "ips"
+      ],
+      "help": "slot.mods.help"
     }
   ]
 }
