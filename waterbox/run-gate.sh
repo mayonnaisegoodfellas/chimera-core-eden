@@ -689,5 +689,27 @@ else
 	skip "title-after-loading: no game in ${games#$root/}/title-after-loading"
 fi
 
+# 10f. lower-left-origin: a game that draws with the window's origin at the
+# lower left, in build/test-games/lower-left-origin (Tomb Raider I-III
+# Remastered, first release). The OpenGL renderer turned the clip origin over
+# for it and the front face too, so every triangle facing the game was culled
+# and the screen stayed black; and it placed the viewport from the top of the
+# drawing area, where the game, drawing 1280x720 in a 1920x1080 picture and
+# showing the bottom 720 rows of it, put nothing (patch 0015). At frame 1000
+# the game shows its licence agreement: text in the middle of the screen.
+if [ -n "$(game_in lower-left-origin)" ]; then
+	r=$(sandboxed_game lower-left-origin 1000 --timeout 1800 --screenshot "1000=$work/lower-left-origin-1000.tga")
+	shot="$work/lower-left-origin-1000.tga"
+	lit=$(python3 "$here/tests/lit-pixels.py" "$shot" 2>/dev/null || echo 0)
+	middle=$(python3 "$here/tests/band-brightness.py" "$shot" 400 560 2>/dev/null || echo -1)
+	if [ "$r" = 0 ] && [ "$lit" -gt 150000 ] && awk -v m="$middle" 'BEGIN { exit !(m > 10) }'; then
+		pass "lower-left-origin: the picture at frame 1000 has $lit pixels that are not black, and rows 400-559 are at $middle"
+	else
+		fail "lower-left-origin (exit $r): the picture at frame 1000 has $lit pixels that are not black (more than 150000 expected) and rows 400-559 at $middle (more than 10 expected); see build/gate/lower-left-origin.err"
+	fi
+else
+	skip "lower-left-origin: no game in ${games#$root/}/lower-left-origin"
+fi
+
 echo "$fails failed"
 exit "$fails"

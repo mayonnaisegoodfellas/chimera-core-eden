@@ -1,0 +1,113 @@
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.cpp b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+--- a/src/video_core/renderer_opengl/gl_rasterizer.cpp
++++ b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+@@ -850,10 +850,35 @@
+     SyncVertexInstances();
+ }
+ 
++#ifdef CHIMERA
++// Chimera: with the window origin at the lower left, the viewports and the
++// scissors are placed from the bottom of the drawing area (see SyncViewport).
++// They then depend on the origin and on the area's height, and neither marks
++// them for update when it changes: all of them are placed again.
++void RasterizerOpenGL::ChimeraPlaceFromOrigin() {
++    auto& flags = maxwell3d->dirty.flags;
++    const auto& regs = maxwell3d->regs;
++    const bool lower_left = regs.window_origin.mode != Maxwell::WindowOrigin::Mode::UpperLeft;
++    const u32 height = lower_left ? static_cast<u32>(regs.surface_clip.height) : 0U;
++    if (lower_left == chimera_placed_lower_left && height == chimera_placed_height) {
++        return;
++    }
++    chimera_placed_lower_left = lower_left;
++    chimera_placed_height = height;
++    flags[Dirty::Viewports] = true;
++    flags[Dirty::ViewportTransform] = true;
++    flags[Dirty::Scissors] = true;
++    for (size_t index = 0; index < Maxwell::NumViewports; ++index) {
++        flags[Dirty::Scissor0 + index] = true;
++    }
++}
++#endif
++
+ void RasterizerOpenGL::SyncViewport() {
+     auto& flags = maxwell3d->dirty.flags;
+     const auto& regs = maxwell3d->regs;
+ #ifdef CHIMERA
++    ChimeraPlaceFromOrigin();
+     // Chimera: whether the viewport turns the picture upside down. Its scale
+     // does when negative, and so does a swizzle that negates Y. NVIDIA's
+     // driver applies that swizzle itself (glViewportSwizzleNV below); without
+@@ -887,6 +912,16 @@
+ #endif
+             flip_faces = !flip_faces;
+         }
++#ifdef CHIMERA
++        // A lower-left window origin turns the clip origin over (below), and
++        // GL then counts which way a triangle turns as the game does: the
++        // front face is not to be turned over for it. It was, and every
++        // triangle facing the game was culled (Tomb Raider I-III Remastered
++        // drew nothing).
++        if (regs.window_origin.mode != Maxwell::WindowOrigin::Mode::UpperLeft) {
++            flip_faces = !flip_faces;
++        }
++#endif
+         if (flip_faces) {
+             switch (mode) {
+             case GL_CW:
+@@ -973,6 +1008,17 @@
+                 y += height;
+                 height = -height;
+             }
++#ifdef CHIMERA
++            // With the origin at the lower left, the window's row 0 is the
++            // drawing area's last: the viewport is placed from the bottom,
++            // as the Vulkan renderer places it. It was placed from the top,
++            // and a game drawing 1280x720 in a 1920x1080 picture, then
++            // showing the bottom 720 rows of it, showed little of what it
++            // drew (Tomb Raider I-III Remastered).
++            if (chimera_placed_lower_left) {
++                y = conv(static_cast<f32>(regs.surface_clip.height)) - (y + height);
++            }
++#endif
+             glViewportIndexedf(static_cast<GLuint>(index), x, y, width != 0.0f ? width : 1.0f,
+                                height != 0.0f ? height : 1.0f);
+ 
+@@ -1359,8 +1405,22 @@
+         const auto& src = regs.scissor_test[index];
+         if (src.enable) {
+             glEnablei(GL_SCISSOR_TEST, static_cast<GLuint>(index));
++#ifdef CHIMERA
++            // (placed from the bottom with the origin at the lower left, as
++            // the viewport is: see SyncViewport)
++            u32 min_y = src.min_y;
++            u32 max_y = src.max_y;
++            if (chimera_placed_lower_left) {
++                const u32 clip_height = regs.surface_clip.height;
++                min_y = clip_height > src.max_y ? clip_height - src.max_y : 0;
++                max_y = clip_height > src.min_y ? clip_height - src.min_y : 0;
++            }
++            glScissorIndexed(static_cast<GLuint>(index), scale_up(src.min_x), scale_up(min_y),
++                             scale_up(src.max_x - src.min_x), scale_up(max_y - min_y));
++#else
+             glScissorIndexed(static_cast<GLuint>(index), scale_up(src.min_x), scale_up(src.min_y),
+                              scale_up(src.max_x - src.min_x), scale_up(src.max_y - src.min_y));
++#endif
+         } else {
+             glDisablei(GL_SCISSOR_TEST, static_cast<GLuint>(index));
+         }
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.h b/src/video_core/renderer_opengl/gl_rasterizer.h
+--- a/src/video_core/renderer_opengl/gl_rasterizer.h
++++ b/src/video_core/renderer_opengl/gl_rasterizer.h
+@@ -167,6 +167,12 @@
+     void ChimeraDrawQuads(bool is_indexed, GLsizei num_instances, GLuint base_instance);
+     OGLBuffer chimera_quad_buffer;
+     std::vector<u32> chimera_quad_indices;
++
++    /// The viewports and scissors placed again when the window origin or
++    /// (with the origin at the lower left) the drawing area's height changed
++    void ChimeraPlaceFromOrigin();
++    bool chimera_placed_lower_left = false;
++    u32 chimera_placed_height = 0;
+ #endif
+ 
+     /// Syncs state to match guest's
