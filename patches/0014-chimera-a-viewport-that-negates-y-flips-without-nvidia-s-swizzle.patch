@@ -1,0 +1,44 @@
+diff --git a/src/video_core/renderer_opengl/gl_rasterizer.cpp b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+--- a/src/video_core/renderer_opengl/gl_rasterizer.cpp
++++ b/src/video_core/renderer_opengl/gl_rasterizer.cpp
+@@ -853,6 +853,20 @@
+ void RasterizerOpenGL::SyncViewport() {
+     auto& flags = maxwell3d->dirty.flags;
+     const auto& regs = maxwell3d->regs;
++#ifdef CHIMERA
++    // Chimera: whether the viewport turns the picture upside down. Its scale
++    // does when negative, and so does a swizzle that negates Y. NVIDIA's
++    // driver applies that swizzle itself (glViewportSwizzleNV below); without
++    // it the swizzle was dropped, and a game drawing with it came out upside
++    // down (Streets of Rage 4). It flips like a negative scale, which is how
++    // the Vulkan renderer handles it. Both count only while the viewport is
++    // used: see the flip below.
++    const bool chimera_flip_y =
++        regs.viewport_scale_offset_enabled != 0 &&
++        ((regs.viewport_transform[0].scale_y < 0.0f) !=
++         (!GLAD_GL_NV_viewport_swizzle &&
++          regs.viewport_transform[0].swizzle.y == Maxwell::ViewportSwizzle::NegativeY));
++#endif
+ 
+     const bool rescale_viewports = flags[VideoCommon::Dirty::RescaleViewports];
+     const bool dirty_viewport = flags[Dirty::Viewports] || rescale_viewports;
+@@ -867,9 +881,7 @@
+             flip_faces = !flip_faces;
+         }
+ #ifdef CHIMERA
+-        // (the viewport's scale counts only while the viewport is used: see
+-        // the flip below)
+-        if (regs.viewport_scale_offset_enabled != 0 && regs.viewport_transform[0].scale_y < 0.0f) {
++        if (chimera_flip_y) {
+ #else
+         if (regs.viewport_transform[0].scale_y < 0.0f) {
+ #endif
+@@ -900,7 +912,7 @@
+         // drawing area, which can be far larger than the picture (a game
+         // copying its last picture to the screen with a 16384x16384 area
+         // drew it 15,000 rows below the screen, and the screen stayed black).
+-        if (regs.viewport_scale_offset_enabled != 0 && regs.viewport_transform[0].scale_y < 0.0f) {
++        if (chimera_flip_y) {
+ #else
+         if (regs.viewport_transform[0].scale_y < 0.0f) {
+ #endif

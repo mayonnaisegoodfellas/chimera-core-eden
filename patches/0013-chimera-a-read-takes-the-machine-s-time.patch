@@ -1,0 +1,54 @@
+diff --git a/src/core/hle/service/filesystem/fsp/fs_i_storage.cpp b/src/core/hle/service/filesystem/fsp/fs_i_storage.cpp
+--- a/src/core/hle/service/filesystem/fsp/fs_i_storage.cpp
++++ b/src/core/hle/service/filesystem/fsp/fs_i_storage.cpp
+@@ -8,6 +8,7 @@
+ #include <chrono>
+ #include <thread>
+ 
++#include "core/core.h"
+ #include "core/file_sys/errors.h"
+ #include "core/hle/service/cmif_serialization.h"
+ #include "core/hle/service/filesystem/fsp/fs_i_storage.h"
+@@ -35,6 +36,20 @@
+     R_UNLESS(length >= 0, FileSys::ResultInvalidSize);
+     R_UNLESS(offset >= 0, FileSys::ResultInvalidOffset);
+ 
++#ifdef CHIMERA
++    // Chimera: the time a read is charged (ReadBytesPerSecond, as below)
++    // passes on the machine's clock. The host's clock does not move the
++    // game's time here, so the host sleep below cost the host time and gave
++    // the game none: its reads finished at once, and a game that loads on
++    // several threads while another uses what they load ran out of memory
++    // (Streets of Rage 4).
++    const s64 now = Core::ChimeraTimeNs();
++    if (now < chimera_next_read_ns) {
++        Core::ChimeraGuestSleep(chimera_next_read_ns - now);
++    }
++    chimera_next_read_ns = Core::ChimeraTimeNs() +
++                           std::min(length, MaxChargedReadSize) * 1'000'000'000 / ReadBytesPerSecond;
++#else
+     const auto now = std::chrono::steady_clock::now();
+     if (now < next_read_tick) {
+         std::this_thread::sleep_for(next_read_tick - now);
+@@ -42,6 +57,7 @@
+     next_read_tick = std::chrono::steady_clock::now() +
+                      std::chrono::nanoseconds{std::min(length, MaxChargedReadSize) *
+                                               1'000'000'000 / ReadBytesPerSecond};
++#endif
+ 
+     // Read the data from the Storage backend
+     backend->Read(out_bytes.data(), length, offset);
+diff --git a/src/core/hle/service/filesystem/fsp/fs_i_storage.h b/src/core/hle/service/filesystem/fsp/fs_i_storage.h
+--- a/src/core/hle/service/filesystem/fsp/fs_i_storage.h
++++ b/src/core/hle/service/filesystem/fsp/fs_i_storage.h
+@@ -25,6 +25,10 @@
+     static constexpr s64 ReadBytesPerSecond = 40'000'000;
+     static constexpr s64 MaxChargedReadSize = 64 * 1024;
+     std::chrono::steady_clock::time_point next_read_tick{};
++#ifdef CHIMERA
++    // (the machine's clock, in nanoseconds: see Read)
++    s64 chimera_next_read_ns{};
++#endif
+ 
+     Result Read(
+         OutBuffer<BufferAttr_HipcMapAlias | BufferAttr_HipcMapTransferAllowsNonSecure> out_bytes,

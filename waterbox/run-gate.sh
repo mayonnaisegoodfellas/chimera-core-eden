@@ -597,14 +597,15 @@ fi
 # running on another of the console's four cores. Here the four cores take
 # turns on one thread, so the core asking waited for ever for the other to
 # run, and no frame ended (patch 0010). PAC-MAN CHAMPIONSHIP EDITION 2 PLUS
-# does it at start; at frame 500 it shows the developer's name on black.
+# does it at start; from frame 550 to 650 it shows the developer's name on
+# black (from 500, before reads took time: see 10e).
 if [ -n "$(game_in core-wait)" ]; then
-	r=$(sandboxed_game core-wait 950 --timeout 600 --screenshot "500=$work/core-wait-500.tga")
-	lit=$(python3 "$here/tests/lit-pixels.py" "$work/core-wait-500.tga" 2>/dev/null || echo 0)
+	r=$(sandboxed_game core-wait 950 --timeout 600 --screenshot "600=$work/core-wait-600.tga")
+	lit=$(python3 "$here/tests/lit-pixels.py" "$work/core-wait-600.tga" 2>/dev/null || echo 0)
 	if [ "$r" = 0 ] && grep -q '^app=.* frames=950 ' "$work/core-wait.out" && [ "$lit" -gt 5000 ]; then
-		pass "core-wait: 950 frames, and the picture at frame 500 has $lit pixels that are not black"
+		pass "core-wait: 950 frames, and the picture at frame 600 has $lit pixels that are not black"
 	else
-		fail "core-wait (exit $r): $(grep -c '^frame ' "$work/core-wait.out") frames reported, $lit pixels that are not black at frame 500; see build/gate/core-wait.err"
+		fail "core-wait (exit $r): $(grep -c '^frame ' "$work/core-wait.out") frames reported, $lit pixels that are not black at frame 600; see build/gate/core-wait.err"
 	fi
 else
 	skip "core-wait: no game in ${games#$root/}/core-wait"
@@ -651,6 +652,41 @@ if [ -n "$(game_in update-data)" ] && [ -n "$update" ]; then
 	fi
 else
 	skip "update-data: no game in ${games#$root/}/update-data or no update in update-data/content"
+fi
+
+# 10e. title-after-loading: a game played from start to its title screen, in
+# build/test-games/title-after-loading (Streets of Rage 4, first release).
+# Two fixes, two checks:
+# - Reads from the game's data take time (upstream charges 40 MB/s). The core
+#   slept on the host's clock, which does not move the game's, so its reads
+#   took none: its three loading threads ran ahead of the thread using what
+#   they load, its 512 MB heap filled, and it stayed on its first screen.
+#   Between frames 500 and 3000 it now plays its intro: the picture changes.
+# - A viewport that negates Y (a swizzle that NVIDIA's GL applies itself and
+#   that the core never asks for) was dropped, and the game's title screen
+#   came out upside down. At frame 5000 the dark bar holding "PRESS ANY
+#   BUTTON" is near the bottom (rows 640-659), darker than the art near the
+#   top (rows 60-79), where an upside-down picture has it.
+if [ -n "$(game_in title-after-loading)" ]; then
+	r=$(sandboxed_game title-after-loading 5000 --timeout 7200 --screenshot "5000=$work/title-after-loading-5000.tga")
+	changes=$(awk '$1 == "frame" && $2 >= 500 && $2 <= 3000 { for (i = 3; i <= NF; i++) if ($i ~ /^video=/) seen[$i] = 1 }
+		END { n = 0; for (v in seen) n++; print n }' "$work/title-after-loading.out")
+	if [ "$r" = 0 ] && [ "$changes" -ge 10 ]; then
+		pass "title-after-loading: between frames 500 and 3000 the game showed $changes different pictures"
+	else
+		fail "title-after-loading (exit $r): between frames 500 and 3000 the game showed $changes different pictures (10 or more expected); see build/gate/title-after-loading.err"
+	fi
+	shot="$work/title-after-loading-5000.tga"
+	bar=$(python3 "$here/tests/band-brightness.py" "$shot" 640 660 2>/dev/null || echo -1)
+	art=$(python3 "$here/tests/band-brightness.py" "$shot" 60 80 2>/dev/null || echo -1)
+	lit=$(python3 "$here/tests/lit-pixels.py" "$shot" 2>/dev/null || echo 0)
+	if [ "$r" = 0 ] && [ "$lit" -gt 500000 ] && awk -v b="$bar" -v a="$art" 'BEGIN { exit !(b >= 0 && b < a / 2) }'; then
+		pass "title-after-loading: the title screen is the right way up (rows 640-659 at $bar, rows 60-79 at $art; $lit pixels not black)"
+	else
+		fail "title-after-loading (exit $r): the title screen at frame 5000 is not the right way up (rows 640-659 at $bar, rows 60-79 at $art, the first under half the second expected; $lit pixels not black, more than 500000 expected)"
+	fi
+else
+	skip "title-after-loading: no game in ${games#$root/}/title-after-loading"
 fi
 
 echo "$fails failed"
