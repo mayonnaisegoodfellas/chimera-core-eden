@@ -10,11 +10,11 @@
 # the engine.
 #
 # What passes is published as this repository's own releases, through the
-# workflow every Chimera core publishes with: a rolling `dev` on every push to
-# main, and an immutable `nightly-YYYY-MM-DD` from the scheduled run when main
-# moved since the last one. The first push publishes the first nightly too.
-# A pull request is built and tested, and nothing is published from it. The
-# package carries no keys, system software or game.
+# workflow every Chimera core publishes with: an immutable `nightly-YYYY-MM-DD`
+# from the scheduled run when main moved since the last one, or from a run
+# started by hand. A push to main or a pull request is built and tested, and
+# nothing is published from it. The package carries no keys, system software
+# or game.
 name: chimera
 on:
   pull_request:
@@ -22,12 +22,6 @@ on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
-    inputs:
-      kind:
-        description: 'dev (rolling) or nightly (dated). Blank means dev.'
-        required: false
-        default: ''
-        type: string
   schedule:
     # 04:00 UTC. The plan job skips the build when main has not moved since
     # the last nightly.
@@ -53,7 +47,6 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       build: ${{ steps.plan.outputs.build }}
-      dev: ${{ steps.plan.outputs.dev }}
       nightly: ${{ steps.plan.outputs.nightly }}
     steps:
       - uses: actions/checkout@v6
@@ -62,20 +55,18 @@ jobs:
       - id: plan
         env:
           EVENT: ${{ github.event_name }}
-          KIND: ${{ github.event.inputs.kind }}
         run: |
           last=$(git tag -l 'nightly-*' --sort=-creatordate | head -1)
           moved=true
           if [ -n "$last" ] && [ "$(git rev-list -n1 "$last")" = "$(git rev-parse HEAD)" ]; then moved=false; fi
-          build=true dev=false nightly=false
+          build=true nightly=false
           case "$EVENT" in
             schedule) nightly=$moved; build=$moved ;;
-            workflow_dispatch) if [ "$KIND" = nightly ]; then nightly=true; else dev=true; fi ;;
-            push) dev=true; [ -n "$last" ] || nightly=true ;;
-            pull_request) ;;
+            workflow_dispatch) nightly=true ;;
+            push|pull_request) ;;
           esac
-          echo "last nightly: ${last:-none}; build=$build dev=$dev nightly=$nightly"
-          { echo "build=$build"; echo "dev=$dev"; echo "nightly=$nightly"; } >> "$GITHUB_OUTPUT"
+          echo "last nightly: ${last:-none}; build=$build nightly=$nightly"
+          { echo "build=$build"; echo "nightly=$nightly"; } >> "$GITHUB_OUTPUT"
 
   package:
     name: the package (guest build, core.wbx, the gate's rules, Chimera's checks of the package)
@@ -244,28 +235,10 @@ jobs:
           sh waterbox/build-native.sh
           ls -la build/native/bin/eden-run-native
 
-  publish-dev:
-    name: publish the development build
-    needs: [ plan, package, native ]
-    if: needs.plan.outputs.dev == 'true'
-    permissions:
-      contents: write
-    uses: ToolAssisted-run/chimera/.github/workflows/publish-core.yml@main
-    with:
-      core-id: eden
-      artifact: eden-${{ github.sha }}
-      package: eden.chimeraCore
-      kind: dev
-
   publish-nightly:
     name: publish the nightly
-    # After the dev publish, when there is one: both rewrite the release
-    # index, and two at once would race.
-    needs: [ plan, package, native, publish-dev ]
-    if: >-
-      !cancelled() && needs.plan.outputs.nightly == 'true'
-      && needs.package.result == 'success' && needs.native.result == 'success'
-      && needs.publish-dev.result != 'failure'
+    needs: [ plan, package, native ]
+    if: needs.plan.outputs.nightly == 'true'
     permissions:
       contents: write
     uses: ToolAssisted-run/chimera/.github/workflows/publish-core.yml@main
@@ -273,4 +246,3 @@ jobs:
       core-id: eden
       artifact: eden-${{ github.sha }}
       package: eden.chimeraCore
-      kind: nightly
