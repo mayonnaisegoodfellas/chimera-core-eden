@@ -1,0 +1,18 @@
+diff --git a/src/video_core/texture_cache/texture_cache.h b/src/video_core/texture_cache/texture_cache.h
+--- a/src/video_core/texture_cache/texture_cache.h
++++ b/src/video_core/texture_cache/texture_cache.h
+@@ -856,6 +856,14 @@
+     }();
+ 
+     const auto GetImageViewForFramebuffer = [&](ImageId image_id) {
++#ifdef CHIMERA
++        // Chimera: the memory under the image may be newer than the image.
++        // A game that copies its picture into the framebuffer with the 2D
++        // engine on the CPU (Sonic X Shadow Generations with a 60 fps mod)
++        // leaves the image marked CPU-modified, and showing it as it is
++        // showed an old picture forever. Load the memory into it first.
++        PrepareImage(image_id, false, false);
++#endif
+         ImageViewInfo info{ImageViewType::e2D, view_format};
+         if (config.blending == Tegra::BlendMode::Opaque) {
+             info.x_source = static_cast<u8>(SwizzleSource::R);

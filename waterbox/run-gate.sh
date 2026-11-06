@@ -868,5 +868,32 @@ else
 	skip "mods: no game in ${games#$root/}/lower-left-origin"
 fi
 
+# 10h. cpu-copied-picture: a game that copies its finished picture into the
+# framebuffer with the 2D engine, a copy Eden does on the CPU, into memory.
+# The framebuffer's image in the GPU's cache was then marked out of date, but
+# the screen showed that image as it was, an old picture, for ever (patch
+# 0018). Sonic X Shadow Generations (first release) with a mod that unlocks
+# 60 frames a second does this, in build/test-games/cpu-copied-picture with
+# the mod's .pchtxt beside it: the screen stayed on a loading spinner, where
+# at frame 1700 the title screen is shown. Only OpenGL on a graphics card
+# shows it (with Mesa's software OpenGL the cache drops its images every
+# frame); this test runs with EDEN_GL_DRIVER, a Mesa driver for the card,
+# and on WSL with d3d12. Without one, or without the game: SKIP.
+gl_driver="${EDEN_GL_DRIVER:-}"
+if [ -z "$gl_driver" ] && [ -e /usr/lib/wsl/lib/libd3d12.so ]; then gl_driver=d3d12; fi
+cmod="$(ls "$games/cpu-copied-picture"/*.pchtxt 2>/dev/null | head -1)"
+if [ -n "$(game_in cpu-copied-picture)" ] && [ -n "$cmod" ] && [ -n "$gl_driver" ]; then
+	r=$(export GALLIUM_DRIVER="$gl_driver"; sandboxed_game cpu-copied-picture 1701 --timeout 3600 --mod "$cmod" \
+		--screenshot "1700=$work/cpu-copied-picture-1700.tga")
+	lit=$(python3 "$here/tests/lit-pixels.py" "$work/cpu-copied-picture-1700.tga" 2>/dev/null || echo 0)
+	if [ "$r" = 0 ] && [ "$lit" -gt 500000 ]; then
+		pass "cpu-copied-picture: on the card's OpenGL ($gl_driver), the picture at frame 1700 is the title screen ($lit pixels not black)"
+	else
+		fail "cpu-copied-picture (exit $r): on the card's OpenGL ($gl_driver), the picture at frame 1700 has $lit pixels that are not black (more than 500000 expected, the title screen); see build/gate/cpu-copied-picture.err"
+	fi
+else
+	skip "cpu-copied-picture: needs a game and a .pchtxt in ${games#$root/}/cpu-copied-picture, and OpenGL on a graphics card (EDEN_GL_DRIVER, or WSL's d3d12)"
+fi
+
 echo "$fails failed"
 exit "$fails"
