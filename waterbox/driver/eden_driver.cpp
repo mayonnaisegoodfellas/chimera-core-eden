@@ -34,6 +34,8 @@ bool chimera_solid_nsz(const char *path);
 
 #include "audio_core/audio_core.h"
 #include "audio_core/sink/chimera_sink.h"
+#include <sys/stat.h>
+
 #include "common/fs/path_util.h"
 #include "common/input.h"
 #include "common/param_package.h"
@@ -1180,6 +1182,16 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
         Common::Log::SetGlobalFilter(filter);
     }
     Common::Log::Start();
+    // Chimera's core log (Tools > Export Core Log..., ce_core_log) asks for
+    // Eden's log by mounting a file called "corelog": the log then goes to
+    // stderr too, which Chimera keeps in that log. It is only checked for
+    // (stat allocates nothing in the guest), and Eden's own log file is the
+    // same either way, so the machine does not move.
+    {
+        struct stat corelog;
+        if (stat("corelog", &corelog) == 0 || getenv("CHIMERA_CORE_LOG") != nullptr)
+            Common::Log::SetColorConsoleBackendEnabled(true);
+    }
 
     configure_pads();
     // one host thread runs every guest core in turn, and time is the

@@ -583,6 +583,35 @@ else
 	skip "the package in chimera-run: no $engine or no build/package/eden.chimeraCore"
 fi
 
+# 9a. The core log (Tools > Export Core Log..., chimera-run --core-log): the
+# same movie with the log on draws the same picture at its end, and the log
+# holds Eden's own lines, which reach it only when the core sees the
+# "corelog" file Chimera mounts.
+if [ -x "$engine" ] && [ -f "$pkg" ] && [ -f "$work/engine.movie" ]; then
+	set -- --firmware "prod.keys=$content/prod.keys"
+	[ -f "$content/title.keys" ] && set -- "$@" --firmware "title.keys=$content/title.keys"
+	[ "$have_fw" = 1 ] && set -- "$@" --firmware "firmware.zip=$firmware"
+	rm -f "$work/engine-log.txt" "$work/engine-nolog-300.tga" "$work/engine-log-300.tga"
+	crun_game "$pkg" "$game" "$work/engine.movie" --gpu "$@" \
+		--screenshot "300=$work/engine-nolog-300.tga" >"$work/engine-nolog.out" 2>&1
+	r1=$?
+	crun_game "$pkg" "$game" "$work/engine.movie" --gpu "$@" --core-log "$work/engine-log.txt" \
+		--screenshot "300=$work/engine-log-300.tga" >"$work/engine-log.out" 2>&1
+	r=$?
+	lines=$(grep -c ' <Info> ' "$work/engine-log.txt" 2>/dev/null)
+	if [ "$r1" != 0 ] || [ "$r" != 0 ] || [ ! -f "$work/engine-nolog-300.tga" ]; then
+		fail "the core log: a run failed (exits $r1, $r; build/gate/engine-log.out)"
+	elif ! cmp -s "$work/engine-nolog-300.tga" "$work/engine-log-300.tga"; then
+		fail "the core log: with it on, the picture at frame 300 differs"
+	elif [ "${lines:-0}" -lt 10 ]; then
+		fail "the core log holds ${lines:-0} of Eden's lines (build/gate/engine-log.txt)"
+	else
+		pass "the core log: $lines of Eden's lines, and the same picture at frame 300 as without it"
+	fi
+else
+	skip "the core log: no chimera-run, package or movie"
+fi
+
 # 9b. A project, as a person's: the game in its slot under its own name, the
 # firmware pinned, Internal Resolution 2x, through chimera-run --project. A
 # state saved and loaded by the engine around every frame (which tells the
