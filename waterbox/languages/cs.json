@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "Jak se kreslí obraz. Renderer OpenGL emulátoru Eden kreslí na grafické kartě vašeho počítače. Je to jediný renderer, protože grafiku konzole Switch nejde kreslit softwarově použitelnou rychlostí. Počítač, který neposkytne OpenGL 4.6, toto jádro nespustí. Grafická karta je mimo jádro a na každém počítači je jiná. Co nakreslí, se na konci každého snímku zapíše zpět do paměti konzole, takže uložený stav obsahuje obrázky.",
+		"setting.renderer.help": "Jak se kreslí obraz. Obě volby jsou vlastní renderery emulátoru Eden a obě kreslí na grafické kartě vašeho počítače: opengl-hw pomocí OpenGL 4.6, vulkan-hw pomocí Vulkan. Grafiku konzole Switch nelze kreslit softwarově použitelnou rychlostí, takže počítač, který nenabízí ani jedno, nemůže toto jádro spustit. Grafická karta je mimo jádro a na každém počítači je jiná. S kterýmkoli rendererem se to, co grafická karta nakreslí, na konci každého snímku zapíše zpět do paměti konzole, takže uložený stav obsahuje obrázky. Oba renderery nezapisují zpět stejné bajty a hra je může číst, proto se film musí přehrávat s rendererem, se kterým byl natočen. Zatím vulkan-hw kreslí jen při nastavení Vnitřní rozlišení 1x.",
 		"setting.console_mode": "Režim konzole",
 		"setting.console_mode.help": "Zda je konzole držena v ruce, nebo stojí v doku. Hry se na to ptají a mnohé kreslí v ruce v rozlišení 1280x720 a v doku v rozlišení 1920x1080, s dalšími odpovídajícími detaily. V doku má obraz 1920x1080. Je to součást konzole, takže záznam potřebuje stejnou hodnotu.",
 		"setting.resolution": "Vnitřní rozlišení",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Soubor nebylo možné přečíst ani zapsat. Není disk plný?",
 		"error.tool.not_zstd": "%1 uvnitř souboru nelze rozbalit: soubor je poškozený.",
 		"error.tool.cut_short": "%1 uvnitř souboru končí příliš brzy: soubor je poškozený.",
-		"error.solid_nsz": "%1 je komprimovaný jako jeden proud (pevný NSZ), který Eden za běhu hry neumí číst. Vytvořte z něj .nsp pomocí Nástroje > Nástroje jader > Eden > Rozbalit NSZ... a použijte ten."
+		"error.solid_nsz": "%1 je komprimovaný jako jeden proud (pevný NSZ), který Eden za běhu hry neumí číst. Vytvořte z něj .nsp pomocí Nástroje > Nástroje jader > Eden > Rozbalit NSZ... a použijte ten.",
+		"error.no_vk_bridge": "Emulátor Eden kreslí pomocí Vulkan na grafické kartě a program Chimera nepředal žádné zařízení Vulkan. Nastavení rendereru je vulkan-hw a tento počítač možná nemá Vulkan, který by mohl dát. Místo toho může fungovat renderer opengl-hw.",
+		"error.vulkan_not_started": "Renderer se nespustil: emulátor Eden nemohl na grafické kartě tohoto počítače použít Vulkan. Místo toho může fungovat renderer opengl-hw.",
+		"error.vulkan_1x_only": "Renderer vulkan-hw kreslí jen ve vlastním rozlišení konzole, takže Vnitřní rozlišení musí být 1x. Zvolte 1x, nebo pro větší obraz renderer opengl-hw."
 	}
 }

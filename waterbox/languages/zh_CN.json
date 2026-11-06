@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "渲染器",
-		"setting.renderer.help": "画面的绘制方式。Eden 的 OpenGL 渲染器在电脑的显卡上绘制。它是唯一的渲染器，因为 Switch 的图形无法用软件以可用的速度绘制。无法提供 OpenGL 4.6 的电脑不能运行这个核心。显卡位于核心之外，每台电脑都不一样。显卡绘制的内容会在每一帧结束时写回主机的内存，所以状态存档包含这些画面。",
+		"setting.renderer.help": "画面的绘制方式。两个选项都是 Eden 自己的渲染器，都在电脑的显卡上绘制：opengl-hw 使用 OpenGL 4.6，vulkan-hw 使用 Vulkan。Switch 的图形无法用软件以可用的速度绘制，所以两者都无法提供的电脑不能运行这个核心。显卡在核心之外，每台电脑都不一样。无论用哪个渲染器，显卡画出的内容都会在每一帧结束时写回主机的内存，所以即时存档包含画面。两个渲染器写回的字节不同，而游戏可能会读取它们，所以录像必须用制作时的渲染器回放。目前 vulkan-hw 只在内部分辨率 1x 下绘制。",
 		"setting.console_mode": "主机模式",
 		"setting.console_mode.help": "主机是拿在手上，还是放在底座里。游戏会询问是哪一种，很多游戏在手持时以 1280x720 绘制，在底座里以 1920x1080 绘制，其他细节也随之变化。在底座里时，画面为 1920x1080。这是主机的一部分，所以录像需要相同的值。",
 		"setting.resolution": "内部分辨率",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "无法读取或写入文件。磁盘满了吗？",
 		"error.tool.not_zstd": "文件中的 %1 无法解压：文件已损坏。",
 		"error.tool.cut_short": "文件中的 %1 提前结束：文件已损坏。",
-		"error.solid_nsz": "%1 是以单一数据流压缩的（固实 NSZ），游戏运行时 Eden 无法读取。请用 工具(T) > 核心专用工具 > Eden > 解压 NSZ... 制作一个 .nsp，并使用它。"
+		"error.solid_nsz": "%1 是以单一数据流压缩的（固实 NSZ），游戏运行时 Eden 无法读取。请用 工具(T) > 核心专用工具 > Eden > 解压 NSZ... 制作一个 .nsp，并使用它。",
+		"error.no_vk_bridge": "Eden 在显卡上用 Vulkan 绘制，但 Chimera 没有交出 Vulkan 设备。渲染器设置为 vulkan-hw，这台电脑可能没有可以提供的 Vulkan。可以改用 opengl-hw 渲染器试试。",
+		"error.vulkan_not_started": "渲染器没有启动：Eden 无法在这台电脑的显卡上使用 Vulkan。可以改用 opengl-hw 渲染器试试。",
+		"error.vulkan_1x_only": "vulkan-hw 渲染器只按主机本身的分辨率绘制，所以内部分辨率必须是 1x。请选择 1x，或者为了更大的画面改用 opengl-hw 渲染器。"
 	}
 }

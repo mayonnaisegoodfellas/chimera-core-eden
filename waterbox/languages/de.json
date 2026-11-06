@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "Wie das Bild gezeichnet wird. Der OpenGL-Renderer von Eden zeichnet auf der Grafikkarte Ihres Computers. Er ist der einzige Renderer, weil sich die Grafik einer Switch nicht mit brauchbarer Geschwindigkeit in Software zeichnen lässt. Ein Computer, der kein OpenGL 4.6 bereitstellen kann, kann diesen Core nicht ausführen. Die Grafikkarte liegt außerhalb des Cores und ist auf jedem Computer anders. Was sie zeichnet, wird am Ende jedes Frames in den Speicher der Konsole zurückgeschrieben, sodass ein Speicherstand die Bilder enthält.",
+		"setting.renderer.help": "Wie das Bild gezeichnet wird. Beide Möglichkeiten sind Renderer von Eden selbst, und beide zeichnen auf der Grafikkarte Ihres Computers: opengl-hw mit OpenGL 4.6, vulkan-hw mit Vulkan. Die Grafik einer Switch lässt sich nicht mit brauchbarer Geschwindigkeit in Software zeichnen, daher kann ein Computer, der keines von beiden bereitstellen kann, diesen Core nicht ausführen. Die Grafikkarte liegt außerhalb des Cores und ist auf jedem Computer anders. Mit beiden Renderern wird am Ende jedes Frames in den Speicher der Konsole zurückgeschrieben, was die Grafikkarte zeichnet, sodass ein Speicherstand die Bilder enthält. Die beiden Renderer schreiben nicht dieselben Bytes zurück, und ein Spiel kann sie lesen, daher muss ein Film mit dem Renderer abgespielt werden, mit dem er gemacht wurde. Vorerst zeichnet vulkan-hw nur mit Interne Auflösung 1x.",
 		"setting.console_mode": "Konsolenmodus",
 		"setting.console_mode.help": "Ob die Konsole in der Hand gehalten wird oder in ihrem Dock steht. Spiele fragen das ab, und viele zeichnen in der Hand mit 1280x720 und im Dock mit 1920x1080, mit passenden weiteren Details. Im Dock ist das Bild 1920x1080 groß. Der Wert gehört zur Konsole, daher braucht ein Film denselben Wert.",
 		"setting.resolution": "Interne Auflösung",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Eine Datei konnte nicht gelesen oder geschrieben werden. Ist der Datenträger voll?",
 		"error.tool.not_zstd": "%1 in der Datei lässt sich nicht entpacken: Die Datei ist beschädigt.",
 		"error.tool.cut_short": "%1 in der Datei endet zu früh: Die Datei ist beschädigt.",
-		"error.solid_nsz": "%1 ist als ein einziger Strom komprimiert (eine solide NSZ), den Eden nicht lesen kann, während ein Spiel läuft. Erstellen Sie daraus mit Werkzeuge > Core-spezifische Werkzeuge > Eden > NSZ entpacken... eine .nsp und verwenden Sie diese."
+		"error.solid_nsz": "%1 ist als ein einziger Strom komprimiert (eine solide NSZ), den Eden nicht lesen kann, während ein Spiel läuft. Erstellen Sie daraus mit Werkzeuge > Core-spezifische Werkzeuge > Eden > NSZ entpacken... eine .nsp und verwenden Sie diese.",
+		"error.no_vk_bridge": "Eden zeichnet mit Vulkan auf der Grafikkarte, und Chimera hat kein Vulkan-Gerät übergeben. Die Einstellung des Renderers ist vulkan-hw, und dieser Computer hat möglicherweise kein Vulkan zu vergeben. Der Renderer opengl-hw funktioniert vielleicht stattdessen.",
+		"error.vulkan_not_started": "Der Renderer ist nicht gestartet: Eden konnte Vulkan auf der Grafikkarte dieses Computers nicht verwenden. Der Renderer opengl-hw funktioniert vielleicht stattdessen.",
+		"error.vulkan_1x_only": "Der Renderer vulkan-hw zeichnet nur in der eigenen Auflösung der Konsole, daher muss Interne Auflösung 1x sein. Wählen Sie 1x oder für ein größeres Bild den Renderer opengl-hw."
 	}
 }

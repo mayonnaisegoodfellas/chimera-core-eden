@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "Cara gambar dibuat. Renderer OpenGL dari Eden menggambar di kartu grafis komputer Anda. Ini satu-satunya renderer, karena grafis sebuah Switch tidak bisa digambar dengan perangkat lunak pada kecepatan yang berguna. Komputer yang tidak dapat menyediakan OpenGL 4.6 tidak dapat menjalankan core ini. Kartu grafis berada di luar core dan berbeda di setiap komputer. Apa yang digambarnya ditulis kembali ke memori konsol di akhir setiap frame, sehingga sebuah savestate berisi gambar-gambarnya.",
+		"setting.renderer.help": "Cara gambar dibuat. Kedua pilihan adalah renderer milik Eden sendiri, dan keduanya menggambar di kartu grafis komputer Anda: opengl-hw dengan OpenGL 4.6, vulkan-hw dengan Vulkan. Grafis Switch tidak bisa digambar dengan perangkat lunak pada kecepatan yang berguna, jadi komputer yang tidak bisa menyediakan keduanya tidak bisa menjalankan core ini. Kartu grafis berada di luar core dan berbeda di setiap komputer. Dengan renderer mana pun, apa yang digambar kartu grafis ditulis kembali ke memori konsol di akhir setiap frame, jadi savestate berisi gambarnya. Kedua renderer tidak menulis kembali byte yang sama, dan game bisa membacanya, jadi sebuah movie harus diputar dengan renderer yang dipakai untuk membuatnya. Untuk sekarang vulkan-hw hanya menggambar dengan Resolusi Internal 1x.",
 		"setting.console_mode": "Mode Konsol",
 		"setting.console_mode.help": "Apakah konsol dipegang di tangan atau berada di dock-nya. Game menanyakannya, dan banyak yang menggambar pada 1280x720 di tangan dan pada 1920x1080 di dock, dengan detail lain yang menyesuaikan. Saat di dock, gambarnya 1920x1080. Ini bagian dari konsol, jadi sebuah movie memerlukan nilai yang sama.",
 		"setting.resolution": "Resolusi Internal",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Sebuah berkas tidak dapat dibaca atau ditulis. Apakah disk penuh?",
 		"error.tool.not_zstd": "%1 di dalam berkas tidak dapat dibuka: berkas rusak.",
 		"error.tool.cut_short": "%1 di dalam berkas berakhir terlalu cepat: berkas rusak.",
-		"error.solid_nsz": "%1 dikompresi sebagai satu aliran (NSZ solid), yang tidak dapat dibaca Eden saat game berjalan. Buat .nsp darinya dengan Alat > Alat khusus core > Eden > Buka kompresi NSZ..., lalu pakai itu."
+		"error.solid_nsz": "%1 dikompresi sebagai satu aliran (NSZ solid), yang tidak dapat dibaca Eden saat game berjalan. Buat .nsp darinya dengan Alat > Alat khusus core > Eden > Buka kompresi NSZ..., lalu pakai itu.",
+		"error.no_vk_bridge": "Eden menggambar dengan Vulkan di kartu grafis, dan Chimera tidak menyerahkan perangkat Vulkan apa pun. Pengaturan renderer adalah vulkan-hw, dan komputer ini mungkin tidak punya Vulkan untuk diberikan. Renderer opengl-hw mungkin bisa dipakai sebagai gantinya.",
+		"error.vulkan_not_started": "Renderer tidak mulai: Eden tidak bisa memakai Vulkan di kartu grafis komputer ini. Renderer opengl-hw mungkin bisa dipakai sebagai gantinya.",
+		"error.vulkan_1x_only": "Renderer vulkan-hw hanya menggambar pada resolusi asli konsol, jadi Resolusi Internal harus 1x. Pilih 1x, atau renderer opengl-hw untuk gambar yang lebih besar."
 	}
 }

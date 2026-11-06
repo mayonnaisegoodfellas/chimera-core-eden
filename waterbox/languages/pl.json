@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "Jak rysowany jest obraz. Renderer OpenGL emulatora Eden rysuje na karcie graficznej twojego komputera. To jedyny renderer, bo grafiki konsoli Switch nie da się rysować programowo z użyteczną prędkością. Komputer, który nie zapewnia OpenGL 4.6, nie może uruchomić tego rdzenia. Karta graficzna jest poza rdzeniem i na każdym komputerze jest inna. To, co narysuje, jest na końcu każdej klatki zapisywane z powrotem w pamięci konsoli, więc stan zapisu zawiera obrazy.",
+		"setting.renderer.help": "Jak rysowany jest obraz. Obie możliwości to własne renderery emulatora Eden i obie rysują na karcie graficznej komputera: opengl-hw za pomocą OpenGL 4.6, vulkan-hw za pomocą Vulkan. Grafiki konsoli Switch nie da się rysować programowo z użyteczną szybkością, więc komputer, który nie zapewnia żadnego z nich, nie uruchomi tego rdzenia. Karta graficzna jest poza rdzeniem i na każdym komputerze jest inna. Przy każdym z nich to, co rysuje karta graficzna, jest na końcu każdej klatki zapisywane z powrotem do pamięci konsoli, więc zapis stanu zawiera obrazy. Oba renderery nie zapisują z powrotem tych samych bajtów, a gra może je odczytać, więc film trzeba odtwarzać z rendererem, z którym go nagrano. Na razie vulkan-hw rysuje tylko przy ustawieniu Rozdzielczość wewnętrzna 1x.",
 		"setting.console_mode": "Tryb konsoli",
 		"setting.console_mode.help": "Czy konsola jest trzymana w ręku, czy stoi w stacji dokującej. Gry o to pytają, a wiele z nich rysuje w 1280x720 w ręku i w 1920x1080 w stacji, z pasującymi innymi szczegółami. W stacji obraz ma 1920x1080. To część konsoli, więc nagranie potrzebuje tej samej wartości.",
 		"setting.resolution": "Rozdzielczość wewnętrzna",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Nie udało się odczytać ani zapisać pliku. Czy dysk jest pełny?",
 		"error.tool.not_zstd": "%1 w pliku nie daje się rozpakować: plik jest uszkodzony.",
 		"error.tool.cut_short": "%1 w pliku kończy się za wcześnie: plik jest uszkodzony.",
-		"error.solid_nsz": "%1 jest skompresowany jednym strumieniem (ciągły NSZ), którego Eden nie może czytać, gdy gra działa. Utwórz z niego .nsp za pomocą Narzędzia > Narzędzia rdzeni > Eden > Rozpakuj NSZ... i użyj go."
+		"error.solid_nsz": "%1 jest skompresowany jednym strumieniem (ciągły NSZ), którego Eden nie może czytać, gdy gra działa. Utwórz z niego .nsp za pomocą Narzędzia > Narzędzia rdzeni > Eden > Rozpakuj NSZ... i użyj go.",
+		"error.no_vk_bridge": "Emulator Eden rysuje za pomocą Vulkan na karcie graficznej, a program Chimera nie przekazał żadnego urządzenia Vulkan. Ustawienie renderera to vulkan-hw, a ten komputer może nie mieć Vulkan do udostępnienia. Zamiast tego może zadziałać renderer opengl-hw.",
+		"error.vulkan_not_started": "Renderer nie wystartował: emulator Eden nie mógł użyć Vulkan na karcie graficznej tego komputera. Zamiast tego może zadziałać renderer opengl-hw.",
+		"error.vulkan_1x_only": "Renderer vulkan-hw rysuje tylko we własnej rozdzielczości konsoli, więc Rozdzielczość wewnętrzna musi wynosić 1x. Wybierz 1x albo, dla większego obrazu, renderer opengl-hw."
 	}
 }

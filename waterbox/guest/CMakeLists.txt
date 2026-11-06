@@ -5,6 +5,7 @@
 # CMAKE_SOURCE_DIR is extern/eden.
 set(W ${CMAKE_CURRENT_SOURCE_DIR}/..)
 set(GEN ${W}/../build/generated-gl)
+set(GENVK ${W}/../build/generated-vk)
 if(DEFINED ENV{MINIBOX_DIR})
 	set(MB "$ENV{MINIBOX_DIR}" CACHE PATH "miniBox checkout")
 else()
@@ -20,9 +21,15 @@ add_library(eden-guest-core STATIC
 	${W}/driver/memfs.cpp
 	${W}/driver/guest-libc.cpp
 	${GEN}/gl-bridge-guest.cpp
+	${MB}/source/vk/vk-guest.c
+	${GENVK}/vk-bridge-guest.c
 )
 target_include_directories(eden-guest-core PRIVATE ${CMAKE_SOURCE_DIR}/src ${W}/driver
-	${MB}/source/gl ${GEN} ${MB}/extern/emulibc ${MB}/source/guest/include)
+	${MB}/source/gl ${GEN} ${MB}/source/vk ${MB}/extern/emulibc ${MB}/source/guest/include)
+# the Vulkan bridge's guest half: built with the Vulkan headers it was
+# generated from, not Eden's
+set_source_files_properties(${MB}/source/vk/vk-guest.c ${GENVK}/vk-bridge-guest.c PROPERTIES
+	INCLUDE_DIRECTORIES "${MB}/source/vk;${GENVK};${MB}/extern/vulkan-headers/include")
 # the generated wrappers want glad 2's types: built apart from Eden's glad
 set_source_files_properties(${GEN}/gl-bridge-guest.cpp PROPERTIES INCLUDE_DIRECTORIES "${W}/glad/include;${GEN};${MB}/source/gl")
 target_link_libraries(eden-guest-core PUBLIC common core hid_core audio_core video_core frontend_common glad fmt::fmt

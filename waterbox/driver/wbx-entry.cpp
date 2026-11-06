@@ -11,6 +11,7 @@
 #include "memfs.h"
 
 #include "gl-bridge.h"
+#include "vk-bridge.h"
 
 #include <cstdint>
 #include <cstdio>
@@ -43,6 +44,7 @@ std::string g_error;
 std::vector<uint8_t> g_log;
 int32_t g_axes[AXES] = { 0, 0, 0, 0, 0, 0, 0, 0, 32768, 32768 };
 bool g_bridge = false;
+bool g_vk_bridge = false;
 
 std::string read_file(const char *name) {
     std::string out;
@@ -153,6 +155,11 @@ ECL_EXPORT void SetGpuBridge(uint64_t addr) {
     g_bridge = chimera_gl_install(reinterpret_cast<chimera_gl_bridge_fn>(static_cast<uintptr_t>(addr)));
 }
 
+// The Vulkan bridge, the same way: Eden's Vulkan renderer draws through it.
+ECL_EXPORT void SetVulkanBridge(uint64_t addr) {
+    g_vk_bridge = chimera_vk_install(reinterpret_cast<chimera_vk_bridge_fn>(static_cast<uintptr_t>(addr)));
+}
+
 #ifndef CHIMERA_GUEST
 // Natively the GL context is a real one held by one thread at a time.
 ECL_EXPORT void SetGlThreadHooks(void (*bind)(), void (*release)()) {
@@ -174,13 +181,20 @@ ECL_EXPORT int Init(void) {
     }
     const std::string settings = read_file("settings");
     chimera_eden::Options options;
-    // The renderer: Eden's OpenGL one on the machine's GPU, named "-hw" so a
-    // frontend knows to hand the GPU over; "null" draws nothing (the gate's).
+    // The renderer: Eden's OpenGL or Vulkan one on the machine's GPU, named
+    // "-hw" so a frontend knows to hand the GPU over; "null" draws nothing
+    // (the gate's).
     const std::string renderer = json_string(settings, "renderer");
     if (renderer.empty() || renderer == "opengl-hw") {
         options.renderer = "opengl";
         if (!g_bridge) {
             g_error = "error.no_gl_bridge";
+            return 0;
+        }
+    } else if (renderer == "vulkan-hw") {
+        options.renderer = "vulkan";
+        if (!g_vk_bridge) {
+            g_error = "error.no_vk_bridge";
             return 0;
         }
     } else if (renderer == "null") {

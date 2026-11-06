@@ -1,0 +1,722 @@
+diff --git a/src/video_core/query_cache/query_cache.h b/src/video_core/query_cache/query_cache.h
+--- a/src/video_core/query_cache/query_cache.h
++++ b/src/video_core/query_cache/query_cache.h
+@@ -187,6 +187,14 @@
+ 
+ template <typename Traits>
+ void QueryCacheBase<Traits>::CounterEnable(QueryType counter_type, bool is_enabled) {
++#ifdef CHIMERA
++    // Chimera: no occlusion counter runs on the host. Every report answers 1
++    // (see RasterizerVulkan::Query), so what it would count is never read.
++    // (The transform feedback one stays: it is what records the feedback.)
++    if (counter_type == QueryType::ZPassPixelCount64) {
++        is_enabled = false;
++    }
++#endif
+     size_t index = static_cast<size_t>(counter_type);
+     StreamerInterface* streamer = impl->streamers[index];
+     if (!streamer) [[unlikely]] {
+@@ -213,6 +221,11 @@
+ 
+ template <typename Traits>
+ void QueryCacheBase<Traits>::CounterReset(QueryType counter_type) {
++#ifdef CHIMERA
++    if (counter_type == QueryType::ZPassPixelCount64) {
++        return;
++    }
++#endif
+     size_t index = static_cast<size_t>(counter_type);
+     StreamerInterface* streamer = impl->streamers[index];
+     if (!streamer) [[unlikely]] {
+diff --git a/src/video_core/renderer_vulkan/chimera_picture.h b/src/video_core/renderer_vulkan/chimera_picture.h
+new file mode 100644
+--- /dev/null
++++ b/src/video_core/renderer_vulkan/chimera_picture.h
+@@ -0,0 +1,16 @@
++// SPDX-License-Identifier: GPL-3.0-or-later
++#pragma once
++
++#include <cstdint>
++
++namespace Vulkan {
++
++// Chimera: where the screen goes once it is read back (the core's driver
++// sets it): BGRA rows, top first, width * 4 bytes each.
++inline void (*g_chimera_picture)(const std::uint8_t* bgra, std::uint32_t width,
++                                 std::uint32_t height) = nullptr;
++// and whether to read it back at all (not while the frontend fast-forwards:
++// the screen is still drawn, as the machine may read what was drawn)
++inline bool g_chimera_readback = true;
++
++} // namespace Vulkan
+diff --git a/src/video_core/renderer_vulkan/renderer_vulkan.cpp b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+--- a/src/video_core/renderer_vulkan/renderer_vulkan.cpp
++++ b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+@@ -212,6 +212,15 @@
+         return;
+     }
+ 
++#ifdef CHIMERA
++    if (!*surface) {
++        ChimeraDrawPicture(framebuffers);
++        gpu.RendererFrameEndNotify();
++        rasterizer.TickFrame();
++        return;
++    }
++#endif
++
+     RenderScreenshot(framebuffers);
+     Frame* frame = present_manager.GetRenderFrame();
+ 
+@@ -296,6 +305,41 @@
+     return dst_buffer;
+ }
+ 
++#ifdef CHIMERA
++// Chimera: no window. The screen is drawn as it would be into a window's
++// image, into one of the renderer's own, and read back whole at every
++// present: the GPU is waited for, and the bytes go to the core's driver.
++void RendererVulkan::ChimeraDrawPicture(std::span<const Tegra::FramebufferConfig> framebuffers) {
++    const Layout::FramebufferLayout layout = render_window.GetFramebufferLayout();
++    constexpr VkFormat format = VK_FORMAT_B8G8R8A8_UNORM;
++    const VkDeviceSize bytes = VkDeviceSize{layout.width} * layout.height * 4;
++    if (bytes != chimera_download_size) {
++        scheduler.Finish();
++        chimera_download = CreateWrappedBuffer(memory_allocator, bytes, MemoryUsage::Download);
++        chimera_download_size = bytes;
++    }
++    // (the image is made, and made again at another size, by the blit)
++    scheduler.RequestOutsideRenderPassOperationContext();
++    blit_capture.DrawToFrame(device, rasterizer, &chimera_frame, framebuffers, layout, 1, format);
++    if (!g_chimera_readback) {
++        scheduler.Flush();
++        return;
++    }
++    scheduler.RequestOutsideRenderPassOperationContext();
++    scheduler.Record([image = *chimera_frame.image, buffer = *chimera_download,
++                      extent = VkExtent3D{layout.width, layout.height, 1}](vk::CommandBuffer cmdbuf) {
++        DownloadColorImage(cmdbuf, image, buffer, extent);
++    });
++    scheduler.Finish();
++    // the memory is the host's, read in only when asked (it is never
++    // coherent through the bridge)
++    chimera_download.Invalidate();
++    if (g_chimera_picture) {
++        g_chimera_picture(chimera_download.Mapped().data(), layout.width, layout.height);
++    }
++}
++#endif
++
+ void RendererVulkan::RenderScreenshot(std::span<const Tegra::FramebufferConfig> framebuffers) {
+     if (!renderer_settings.screenshot_requested) {
+         return;
+diff --git a/src/video_core/renderer_vulkan/renderer_vulkan.h b/src/video_core/renderer_vulkan/renderer_vulkan.h
+--- a/src/video_core/renderer_vulkan/renderer_vulkan.h
++++ b/src/video_core/renderer_vulkan/renderer_vulkan.h
+@@ -17,6 +17,9 @@
+ #include "video_core/renderer_vulkan/present/frame_gen.h"
+ #endif
+ #include "video_core/renderer_vulkan/vk_blit_screen.h"
++#ifdef CHIMERA
++#include "video_core/renderer_vulkan/chimera_picture.h"
++#endif
+ #include "video_core/renderer_vulkan/vk_present_manager.h"
+ #include "video_core/renderer_vulkan/vk_rasterizer.h"
+ #include "video_core/renderer_vulkan/vk_scheduler.h"
+@@ -74,6 +77,9 @@
+                               VkDeviceSize buffer_size);
+     void RenderScreenshot(std::span<const Tegra::FramebufferConfig> framebuffers);
+     void RenderAppletCaptureLayer(std::span<const Tegra::FramebufferConfig> framebuffers);
++#ifdef CHIMERA
++    void ChimeraDrawPicture(std::span<const Tegra::FramebufferConfig> framebuffers);
++#endif
+ 
+     std::vector<Tegra::FramebufferConfig> applet_capture_layers;
+     std::vector<Tegra::FramebufferConfig> screenshot_layer_scratch;
+@@ -107,6 +113,12 @@
+     std::optional<TurboMode> turbo_mode;
+ 
+     Frame applet_frame;
++#ifdef CHIMERA
++    // the screen, drawn as a window's would be, and the memory it is read into
++    Frame chimera_frame{};
++    vk::Buffer chimera_download;
++    VkDeviceSize chimera_download_size = 0;
++#endif
+ };
+ 
+ } // namespace Vulkan
+diff --git a/src/video_core/renderer_vulkan/vk_fence_manager.h b/src/video_core/renderer_vulkan/vk_fence_manager.h
+--- a/src/video_core/renderer_vulkan/vk_fence_manager.h
++++ b/src/video_core/renderer_vulkan/vk_fence_manager.h
+@@ -46,7 +46,15 @@
+     using TextureCacheType = TextureCache;
+     using QueryCacheType = QueryCache;
+ 
++#ifdef CHIMERA
++    // Chimera: fences are released in line, as the OpenGL renderer's are.
++    // A thread of their own would run what waits behind them (the syncpoints
++    // a game watches) at moments the host's timing picks, and would call
++    // the Vulkan bridge, which takes one call at a time, beside the renderer.
++    static constexpr bool HAS_ASYNC_CHECK = false;
++#else
+     static constexpr bool HAS_ASYNC_CHECK = true;
++#endif
+ };
+ 
+ using GenericFenceManager = VideoCommon::FenceManager<FenceManagerParams>;
+diff --git a/src/video_core/renderer_vulkan/vk_master_semaphore.cpp b/src/video_core/renderer_vulkan/vk_master_semaphore.cpp
+--- a/src/video_core/renderer_vulkan/vk_master_semaphore.cpp
++++ b/src/video_core/renderer_vulkan/vk_master_semaphore.cpp
+@@ -105,6 +105,12 @@
+ 
+     // If none of the above is hit, fallback to a regular wait
+     while (!semaphore.Wait(tick)) {
++#ifdef CHIMERA
++        // (a renderer of a context that is gone waits for nothing)
++        if (vk::g_chimera_context_gone) {
++            return;
++        }
++#endif
+     }
+ 
+     Refresh();
+diff --git a/src/video_core/renderer_vulkan/vk_rasterizer.cpp b/src/video_core/renderer_vulkan/vk_rasterizer.cpp
+--- a/src/video_core/renderer_vulkan/vk_rasterizer.cpp
++++ b/src/video_core/renderer_vulkan/vk_rasterizer.cpp
+@@ -666,6 +666,17 @@
+ 
+ void RasterizerVulkan::Query(GPUVAddr gpu_addr, VideoCommon::QueryType type,
+                              VideoCommon::QueryPropertiesFlags flags, u32 payload, u32 subreport) {
++#ifdef CHIMERA
++    // What a counter reads (the samples a draw passed, the primitives it
++    // made) is the host GPU's answer: it differs between GPUs and drivers,
++    // it is lost with the renderer at a state load, and the game reads it
++    // from its own memory. So every counter answers 1, as with OpenGL: a
++    // payload written where the report goes.
++    if (type != VideoCommon::QueryType::Payload) {
++        type = VideoCommon::QueryType::Payload;
++        payload = 1u;
++    }
++#endif
+     query_cache.CounterReport(gpu_addr, type, flags, payload, subreport);
+ }
+ 
+diff --git a/src/video_core/renderer_vulkan/vk_scheduler.cpp b/src/video_core/renderer_vulkan/vk_scheduler.cpp
+--- a/src/video_core/renderer_vulkan/vk_scheduler.cpp
++++ b/src/video_core/renderer_vulkan/vk_scheduler.cpp
+@@ -49,7 +49,10 @@
+ 
+     AcquireNewChunk();
+     AllocateWorkerCommandBuffer();
++#ifndef CHIMERA
++    // (Chimera: no worker thread - see DispatchWork)
+     worker_thread = std::jthread([this](std::stop_token token) { WorkerThread(token); });
++#endif
+ }
+ 
+ Scheduler::~Scheduler() = default;
+@@ -83,6 +86,22 @@
+ }
+ 
+ void Scheduler::DispatchWork() {
++#ifdef CHIMERA
++    // Chimera: the commands are recorded where they were asked for, on the
++    // thread the machine runs on. In the sandbox every thread is one host
++    // thread, so a worker thread could not run while this one waited on the
++    // GPU for work only the worker would submit; and the GPU bridge is one
++    // context, called from one thread.
++    if (chunk && !chunk->Empty()) {
++        std::scoped_lock el{execution_mutex};
++        const bool has_submit = chunk->HasSubmit();
++        chunk->ExecuteAll(current_cmdbuf, current_upload_cmdbuf);
++        if (has_submit) {
++            AllocateWorkerCommandBuffer();
++        }
++    }
++    return;
++#endif
+     if (chunk && !chunk->Empty()) {
+         {
+             std::scoped_lock ql{queue_mutex};
+@@ -342,6 +361,11 @@
+ u64 Scheduler::SubmitExecution(VkSemaphore signal_semaphore, VkSemaphore wait_semaphore) {
+     EndPendingOperations();
+     InvalidateState();
++#ifdef CHIMERA
++    if (chimera_before_submit) {
++        chimera_before_submit();
++    }
++#endif
+ 
+     const u64 signal_value = master_semaphore->NextTick();
+     RecordWithUploadBuffer([signal_semaphore, wait_semaphore, signal_value,
+diff --git a/src/video_core/renderer_vulkan/vk_scheduler.h b/src/video_core/renderer_vulkan/vk_scheduler.h
+--- a/src/video_core/renderer_vulkan/vk_scheduler.h
++++ b/src/video_core/renderer_vulkan/vk_scheduler.h
+@@ -99,6 +99,18 @@
+         on_submit = std::move(func);
+     }
+ 
++#ifdef CHIMERA
++    /// Chimera: through the GPU bridge no memory is coherent. Called before
++    /// every submission (what was written into mapped memory goes out) and
++    /// after every wait for the GPU (what it wrote there comes in).
++    void ChimeraOnSubmit(std::function<void()>&& func) {
++        chimera_before_submit = std::move(func);
++    }
++    void ChimeraOnWait(std::function<void(u64)>&& func) {
++        chimera_after_wait = std::move(func);
++    }
++#endif
++
+     /// Send work to a separate thread.
+     template <typename T>
+         requires std::is_invocable_v<T, vk::CommandBuffer, vk::CommandBuffer>
+@@ -136,6 +148,11 @@
+                 Flush();
+             }
+             master_semaphore->Wait(tick);
++#ifdef CHIMERA
++            if (chimera_after_wait) {
++                chimera_after_wait(tick);
++            }
++#endif
+         }
+         if (Settings::values.use_speed_limit.GetValue() && target_fps > 0.0) {
+             auto now = std::chrono::steady_clock::now();
+@@ -310,6 +327,10 @@
+ 
+     std::unique_ptr<CommandChunk> chunk;
+     std::function<void()> on_submit;
++#ifdef CHIMERA
++    std::function<void()> chimera_before_submit;
++    std::function<void(u64)> chimera_after_wait;
++#endif
+ 
+     State state;
+ 
+diff --git a/src/video_core/renderer_vulkan/vk_staging_buffer_pool.cpp b/src/video_core/renderer_vulkan/vk_staging_buffer_pool.cpp
+--- a/src/video_core/renderer_vulkan/vk_staging_buffer_pool.cpp
++++ b/src/video_core/renderer_vulkan/vk_staging_buffer_pool.cpp
+@@ -9,6 +9,9 @@
+ #include <vector>
+ 
+ #include <fmt/ranges.h>
++#ifdef CHIMERA
++#include "video_core/vulkan_common/vma.h"
++#endif
+ 
+ #include "common/alignment.h"
+ #include "common/assert.h"
+@@ -96,11 +99,73 @@
+     }
+     stream_pointer = stream_buffer.Mapped();
+     ASSERT_MSG(!stream_pointer.empty(), "Stream buffer must be host visible!");
++#ifdef CHIMERA
++    scheduler.ChimeraOnSubmit([this] { ChimeraFlushUploads(); });
++    scheduler.ChimeraOnWait([this](u64 tick) { ChimeraInvalidateDownloads(tick); });
++#endif
+ }
+ 
+ StagingBufferPool::~StagingBufferPool() = default;
+ 
++#ifdef CHIMERA
+ StagingBufferRef StagingBufferPool::Request(size_t size, MemoryUsage usage, bool deferred) {
++    StagingBufferRef ref = ChimeraRequest(size, usage, deferred);
++    if (ref.mapped_span.empty() || usage == MemoryUsage::DeviceLocal) {
++        return ref;
++    }
++    ChimeraRange range{
++        .allocator = nullptr,
++        .allocation = nullptr,
++        .offset = ref.offset,
++        .size = static_cast<VkDeviceSize>(size),
++        .tick = scheduler.CurrentTick(),
++        .index = ref.index,
++        .deferred = deferred,
++    };
++    if (ref.buffer == *stream_buffer) {
++        range.allocator = stream_buffer.ChimeraAllocator();
++        range.allocation = stream_buffer.ChimeraAllocation();
++    } else {
++        for (const StagingBuffer& entry : GetCache(ref.usage)[ref.log2_level].entries) {
++            if (entry.index == ref.index) {
++                range.allocator = entry.buffer.ChimeraAllocator();
++                range.allocation = entry.buffer.ChimeraAllocation();
++                break;
++            }
++        }
++    }
++    if (!range.allocation) {
++        return ref;
++    }
++    std::scoped_lock lock{chimera_mutex};
++    (usage == MemoryUsage::Download ? chimera_downloads : chimera_uploads).push_back(range);
++    return ref;
++}
++
++void StagingBufferPool::ChimeraFlushUploads() {
++    std::scoped_lock lock{chimera_mutex};
++    for (const ChimeraRange& range : chimera_uploads) {
++        vmaFlushAllocation(range.allocator, range.allocation, range.offset, range.size);
++    }
++    chimera_uploads.clear();
++}
++
++void StagingBufferPool::ChimeraInvalidateDownloads(u64 tick) {
++    std::scoped_lock lock{chimera_mutex};
++    std::erase_if(chimera_downloads, [tick](const ChimeraRange& range) {
++        if (range.tick > tick) {
++            return false;
++        }
++        vmaInvalidateAllocation(range.allocator, range.allocation, range.offset, range.size);
++        // a deferred one is read when it is freed, at a wait of its own
++        return !range.deferred;
++    });
++}
++
++StagingBufferRef StagingBufferPool::ChimeraRequest(size_t size, MemoryUsage usage, bool deferred) {
++#else
++StagingBufferRef StagingBufferPool::Request(size_t size, MemoryUsage usage, bool deferred) {
++#endif
+     if (!deferred && usage == MemoryUsage::Upload && size <= region_size) {
+         return GetStreamBuffer(size);
+     }
+@@ -108,6 +173,14 @@
+ }
+ 
+ void StagingBufferPool::FreeDeferred(StagingBufferRef& ref) {
++#ifdef CHIMERA
++    {
++        std::scoped_lock lock{chimera_mutex};
++        std::erase_if(chimera_downloads, [&ref](const ChimeraRange& range) {
++            return range.deferred && range.index == ref.index;
++        });
++    }
++#endif
+     auto& entries = GetCache(ref.usage)[ref.log2_level].entries;
+     const auto is_this_one = [&ref](const StagingBuffer& entry) {
+         return entry.index == ref.index;
+diff --git a/src/video_core/renderer_vulkan/vk_staging_buffer_pool.h b/src/video_core/renderer_vulkan/vk_staging_buffer_pool.h
+--- a/src/video_core/renderer_vulkan/vk_staging_buffer_pool.h
++++ b/src/video_core/renderer_vulkan/vk_staging_buffer_pool.h
+@@ -7,6 +7,7 @@
+ #pragma once
+ 
+ #include <climits>
++#include <mutex>
+ #include <vector>
+ 
+ #include "common/common_types.h"
+@@ -47,6 +48,27 @@
+     void TickFrame();
+ 
+ private:
++#ifdef CHIMERA
++    // Chimera: the parts of mapped memory handed out, flushed before the
++    // next submission (uploads) or invalidated after the wait for the GPU
++    // that wrote them (downloads)
++    struct ChimeraRange {
++        VmaAllocator allocator;
++        VmaAllocation allocation;
++        VkDeviceSize offset;
++        VkDeviceSize size;
++        u64 tick;
++        u64 index;
++        bool deferred;
++    };
++    StagingBufferRef ChimeraRequest(size_t size, MemoryUsage usage, bool deferred);
++    void ChimeraFlushUploads();
++    void ChimeraInvalidateDownloads(u64 tick);
++    std::vector<ChimeraRange> chimera_uploads;
++    std::vector<ChimeraRange> chimera_downloads;
++    std::mutex chimera_mutex;
++#endif
++
+     struct StreamBufferCommit {
+         size_t upper_bound;
+         u64 tick;
+diff --git a/src/video_core/renderer_vulkan/vk_swapchain.cpp b/src/video_core/renderer_vulkan/vk_swapchain.cpp
+--- a/src/video_core/renderer_vulkan/vk_swapchain.cpp
++++ b/src/video_core/renderer_vulkan/vk_swapchain.cpp
+@@ -142,6 +142,18 @@
+     width = width_;
+     height = height_;
+     surface = surface_;
++#ifdef CHIMERA
++    // Chimera: no window. The renderer draws the screen into an image of its
++    // own and the core reads it back (RendererVulkan::ChimeraDrawPicture):
++    // this "swapchain" only says that image's format, and that there is one.
++    if (!surface) {
++        image_count = 1;
++        surface_format = {VK_FORMAT_B8G8R8A8_UNORM, VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
++        image_view_format = VK_FORMAT_B8G8R8A8_UNORM;
++        extent = {width, height};
++        return;
++    }
++#endif
+ 
+     const auto physical_device = device.GetPhysical();
+     const auto capabilities{physical_device.GetSurfaceCapabilitiesKHR(VkSurfaceKHR(surface))};
+diff --git a/src/video_core/renderer_vulkan/vk_texture_cache.cpp b/src/video_core/renderer_vulkan/vk_texture_cache.cpp
+--- a/src/video_core/renderer_vulkan/vk_texture_cache.cpp
++++ b/src/video_core/renderer_vulkan/vk_texture_cache.cpp
+@@ -2240,6 +2240,135 @@
+         }
+         return;
+     } else {
++#ifdef CHIMERA
++        // Chimera: a depth image is copied into the GPU's own memory first
++        // and from there into the host's: straight into host memory a depth
++        // copy took a GeForce GTX 1060 about 50 ms for 3.6 MB.
++        if ((aspect_mask & VK_IMAGE_ASPECT_DEPTH_BIT) != 0) {
++            const size_t bytes = unswizzled_size_bytes;
++            boost::container::small_vector<VkBuffer, 8> buffers_vector{};
++            boost::container::small_vector<size_t, 8> starts{};
++            boost::container::small_vector<StagingBufferRef, 8> locals{};
++            boost::container::small_vector<boost::container::small_vector<VkBufferImageCopy, 16>, 8>
++                vk_copies;
++            for (size_t index = 0; index < buffers_span.size(); index++) {
++                buffers_vector.emplace_back(buffers_span[index]);
++                starts.emplace_back(offsets_span[index]);
++                locals.emplace_back(runtime->staging_buffer_pool.Request(bytes, MemoryUsage::DeviceLocal));
++                vk_copies.emplace_back(
++                    TransformBufferImageCopies(copies, locals.back().offset, aspect_mask));
++            }
++            boost::container::small_vector<VkBuffer, 8> local_buffers{};
++            boost::container::small_vector<VkDeviceSize, 8> local_offsets{};
++            for (const auto& local : locals) {
++                local_buffers.emplace_back(local.buffer);
++                local_offsets.emplace_back(local.offset);
++            }
++            // Only the bytes the copies write go on: the rest of the
++            // download buffer keeps what it held, as it would have, and
++            // nothing the GPU's memory happened to hold reaches the machine.
++            const auto written = [&](const auto& list, VkDeviceSize base) {
++                VkDeviceSize end = 0;
++                for (const VkBufferImageCopy& c : list) {
++                    const VkDeviceSize texel =
++                        c.imageSubresource.aspectMask == VK_IMAGE_ASPECT_STENCIL_BIT ? 1
++                        : info.format == VideoCore::Surface::PixelFormat::D16_UNORM  ? 2
++                                                                                     : 4;
++                    const VkDeviceSize row = c.bufferRowLength ? c.bufferRowLength : c.imageExtent.width;
++                    const VkDeviceSize rows = c.bufferImageHeight ? c.bufferImageHeight : c.imageExtent.height;
++                    const VkDeviceSize slices =
++                        VkDeviceSize{c.imageExtent.depth} * c.imageSubresource.layerCount;
++                    const VkDeviceSize last = (row * rows * (slices - 1) +
++                                               row * (c.imageExtent.height - 1) + c.imageExtent.width) *
++                                              texel;
++                    end = (std::max)(end, c.bufferOffset - base + last);
++                }
++                return end;
++            };
++            VkDeviceSize bytes_written = 0;
++            for (size_t index = 0; index < vk_copies.size(); index++) {
++                bytes_written = (std::max)(bytes_written, written(vk_copies[index], local_offsets[index]));
++            }
++            scheduler->RequestOutsideRenderPassOperationContext();
++            scheduler->Record([buffers = std::move(buffers_vector), starts = std::move(starts),
++                               local_buffers = std::move(local_buffers),
++                               local_offsets = std::move(local_offsets), bytes = bytes_written,
++                               image = *original_image, aspect_mask_ = aspect_mask,
++                               vk_copies](vk::CommandBuffer cmdbuf) {
++                const VkImageMemoryBarrier read_barrier{
++                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
++                    .pNext = nullptr,
++                    .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
++                    .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
++                    .oldLayout = VK_IMAGE_LAYOUT_GENERAL,
++                    .newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++                    .image = image,
++                    .subresourceRange{
++                        .aspectMask = aspect_mask_,
++                        .baseMipLevel = 0,
++                        .levelCount = VK_REMAINING_MIP_LEVELS,
++                        .baseArrayLayer = 0,
++                        .layerCount = VK_REMAINING_ARRAY_LAYERS,
++                    },
++                };
++                cmdbuf.PipelineBarrier(vk::PIPELINE_STAGE_GRAPHICS_COMPUTE_TRANSFER,
++                                       VK_PIPELINE_STAGE_TRANSFER_BIT, 0, read_barrier);
++                for (size_t index = 0; index < buffers.size(); index++) {
++                    cmdbuf.CopyImageToBuffer(image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                                             local_buffers[index], vk_copies[index]);
++                }
++                const VkMemoryBarrier copied_barrier{
++                    .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
++                    .pNext = nullptr,
++                    .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
++                    .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT,
++                };
++                cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
++                                       0, copied_barrier);
++                for (size_t index = 0; index < buffers.size(); index++) {
++                    const VkBufferCopy region{
++                        .srcOffset = local_offsets[index],
++                        .dstOffset = starts[index],
++                        .size = bytes,
++                    };
++                    cmdbuf.CopyBuffer(local_buffers[index], buffers[index], region);
++                }
++                const VkMemoryBarrier memory_write_barrier{
++                    .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
++                    .pNext = nullptr,
++                    .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
++                    .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
++                };
++                const VkImageMemoryBarrier image_write_barrier{
++                    .sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
++                    .pNext = nullptr,
++                    .srcAccessMask = 0,
++                    .dstAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
++                    .oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
++                    .newLayout = VK_IMAGE_LAYOUT_GENERAL,
++                    .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++                    .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
++                    .image = image,
++                    .subresourceRange{
++                        .aspectMask = aspect_mask_,
++                        .baseMipLevel = 0,
++                        .levelCount = VK_REMAINING_MIP_LEVELS,
++                        .baseArrayLayer = 0,
++                        .layerCount = VK_REMAINING_ARRAY_LAYERS,
++                    },
++                };
++                cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
++                                       vk::PIPELINE_STAGE_GRAPHICS_COMPUTE, 0, memory_write_barrier,
++                                       nullptr, image_write_barrier);
++            });
++            if (is_rescaled) {
++                ScaleUp(true);
++            }
++            return;
++        }
++#endif
+         boost::container::small_vector<VkBuffer, 8> buffers_vector{};
+         boost::container::small_vector<boost::container::small_vector<VkBufferImageCopy, 16>, 8>
+             vk_copies;
+diff --git a/src/video_core/video_core.cpp b/src/video_core/video_core.cpp
+--- a/src/video_core/video_core.cpp
++++ b/src/video_core/video_core.cpp
+@@ -86,7 +86,10 @@
+ #ifdef HAS_OPENGL
+     OpenGL::g_chimera_forget_syncs = true;
+ #endif
++    Vulkan::vk::g_chimera_context_gone =
++        Settings::values.renderer_backend.GetValue() == Settings::RendererBackend::Vulkan;
+     gpu.ChimeraDropRenderer();
++    Vulkan::vk::g_chimera_context_gone = false;
+ #ifdef HAS_OPENGL
+     OpenGL::g_chimera_forget_syncs = false;
+ #endif
+diff --git a/src/video_core/vulkan_common/vulkan_instance.cpp b/src/video_core/vulkan_common/vulkan_instance.cpp
+--- a/src/video_core/vulkan_common/vulkan_instance.cpp
++++ b/src/video_core/vulkan_common/vulkan_instance.cpp
+@@ -113,17 +113,31 @@
+ }
+ } // Anonymous namespace
+ 
++#ifdef CHIMERA
++// Chimera: the GPU bridge's Vulkan, linked in (miniBox source/vk/vk-guest.c)
++extern "C" void* chimera_vk_lookup(const char* name);
++#endif
++
+ vk::Instance CreateInstance(const Common::DynamicLibrary& library, vk::InstanceDispatch& dld,
+                             u32 required_version, Core::Frontend::WindowSystemType window_type,
+                             bool enable_validation) {
++#ifdef CHIMERA
++    // Chimera: no library is opened; every call goes through the GPU bridge
++    dld.vkGetInstanceProcAddr =
++        reinterpret_cast<PFN_vkGetInstanceProcAddr>(chimera_vk_lookup("vkGetInstanceProcAddr"));
++    if (!dld.vkGetInstanceProcAddr) {
++#else
+     if (!library.IsOpen()) {
++#endif
+         LOG_ERROR(Render_Vulkan, "Vulkan library not available");
+         throw vk::Exception(VK_ERROR_INITIALIZATION_FAILED);
+     }
++#ifndef CHIMERA
+     if (!library.GetSymbol("vkGetInstanceProcAddr", &dld.vkGetInstanceProcAddr)) {
+         LOG_ERROR(Render_Vulkan, "vkGetInstanceProcAddr not present in Vulkan");
+         throw vk::Exception(VK_ERROR_INITIALIZATION_FAILED);
+     }
++#endif
+     if (!vk::Load(dld)) {
+         LOG_ERROR(Render_Vulkan, "Failed to load Vulkan function pointers");
+         throw vk::Exception(VK_ERROR_INITIALIZATION_FAILED);
+diff --git a/src/video_core/vulkan_common/vulkan_library.cpp b/src/video_core/vulkan_common/vulkan_library.cpp
+--- a/src/video_core/vulkan_common/vulkan_library.cpp
++++ b/src/video_core/vulkan_common/vulkan_library.cpp
+@@ -16,7 +16,10 @@
+ std::shared_ptr<Common::DynamicLibrary> OpenLibrary(
+     [[maybe_unused]] Core::Frontend::GraphicsContext* context) {
+     LOG_DEBUG(Render_Vulkan, "Looking for a Vulkan library");
+-#if defined(__ANDROID__) && defined(ARCHITECTURE_arm64)
++#if defined(CHIMERA)
++    // Chimera: Vulkan is the GPU bridge's, linked in; nothing to open
++    return std::make_shared<Common::DynamicLibrary>();
++#elif defined(__ANDROID__) && defined(ARCHITECTURE_arm64)
+     // Android manages its Vulkan driver from the frontend.
+     return context->GetDriverLibrary();
+ #else
+diff --git a/src/video_core/vulkan_common/vulkan_surface.cpp b/src/video_core/vulkan_common/vulkan_surface.cpp
+--- a/src/video_core/vulkan_common/vulkan_surface.cpp
++++ b/src/video_core/vulkan_common/vulkan_surface.cpp
+@@ -106,6 +106,12 @@
+     }
+ #endif
+ 
++#ifdef CHIMERA
++    // Chimera: no window, so no surface (the screen is read back instead)
++    if (window_info.type == Core::Frontend::WindowSystemType::Headless) {
++        return vk::SurfaceKHR{};
++    }
++#endif
+     if (!unsafe_surface) {
+         LOG_ERROR(Render_Vulkan, "Presentation not supported on this platform");
+         throw vk::Exception(VK_ERROR_INITIALIZATION_FAILED);
+diff --git a/src/video_core/vulkan_common/vulkan_wrapper.h b/src/video_core/vulkan_common/vulkan_wrapper.h
+--- a/src/video_core/vulkan_common/vulkan_wrapper.h
++++ b/src/video_core/vulkan_common/vulkan_wrapper.h
+@@ -131,8 +131,20 @@
+     VkResult result;
+ };
+ 
++#ifdef CHIMERA
++/// Chimera: set while a renderer whose context is gone (a state was loaded)
++/// is taken down. Every call it makes then is refused by the GPU bridge, and
++/// none of those refusals is an error to stop for.
++inline bool g_chimera_context_gone = false;
++#endif
++
+ /// Throws a Vulkan exception if result is not success.
+ inline void Check(VkResult result) {
++#ifdef CHIMERA
++    if (g_chimera_context_gone) {
++        return;
++    }
++#endif
+     if (result != VK_SUCCESS) {
+         throw Exception(result);
+     }
+@@ -818,6 +830,17 @@
+ 
+     void Invalidate() const;
+ 
++#ifdef CHIMERA
++    // Chimera: the allocation, for a part of it to be flushed or invalidated
++    // later (StagingBufferPool)
++    VmaAllocator ChimeraAllocator() const noexcept {
++        return allocator;
++    }
++    VmaAllocation ChimeraAllocation() const noexcept {
++        return allocation;
++    }
++#endif
++
+     void SetObjectNameEXT(const char* name) const;
+ 
+     MemoryLocation Location() const noexcept {

@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Bộ dựng hình",
-		"setting.renderer.help": "Cách hình ảnh được vẽ. Bộ dựng hình OpenGL của Eden vẽ trên card đồ họa của máy tính bạn. Đây là bộ dựng hình duy nhất, vì đồ họa của một máy Switch không thể vẽ bằng phần mềm với tốc độ dùng được. Máy tính không cung cấp được OpenGL 4.6 thì không chạy được core này. Card đồ họa nằm ngoài core và mỗi máy tính một khác. Những gì nó vẽ được ghi ngược vào bộ nhớ của máy ở cuối mỗi khung hình, nên một bản lưu trạng thái chứa các hình ảnh.",
+		"setting.renderer.help": "Cách hình ảnh được vẽ. Cả hai lựa chọn đều là bộ kết xuất riêng của Eden, và cả hai đều vẽ trên card đồ họa của máy tính: opengl-hw bằng OpenGL 4.6, vulkan-hw bằng Vulkan. Đồ họa của Switch không thể vẽ bằng phần mềm ở tốc độ dùng được, nên máy tính không cung cấp được cái nào thì không chạy được lõi này. Card đồ họa nằm ngoài lõi và khác nhau trên mỗi máy tính. Với bộ kết xuất nào cũng vậy, những gì card đồ họa vẽ được ghi lại vào bộ nhớ của máy chơi game ở cuối mỗi khung hình, nên một bản lưu trạng thái chứa các hình ảnh. Hai bộ kết xuất không ghi lại cùng các byte, và trò chơi có thể đọc chúng, nên một movie phải được phát bằng bộ kết xuất đã dùng để làm ra nó. Hiện tại vulkan-hw chỉ vẽ với Độ phân giải bên trong 1x.",
 		"setting.console_mode": "Chế độ máy",
 		"setting.console_mode.help": "Máy được cầm trên tay hay đặt trên đế. Trò chơi hỏi điều đó, và nhiều trò vẽ ở 1280x720 khi cầm tay và ở 1920x1080 khi đặt trên đế, với các chi tiết khác đi kèm. Khi đặt trên đế, hình ảnh là 1920x1080. Đây là một phần của máy, nên một movie cần cùng giá trị.",
 		"setting.resolution": "Độ phân giải bên trong",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Không đọc hoặc ghi được một tệp. Đĩa đầy chăng?",
 		"error.tool.not_zstd": "%1 trong tệp không giải nén được: tệp bị hỏng.",
 		"error.tool.cut_short": "%1 trong tệp kết thúc quá sớm: tệp bị hỏng.",
-		"error.solid_nsz": "%1 được nén thành một luồng (NSZ đặc), Eden không đọc được khi trò chơi đang chạy. Hãy tạo .nsp từ nó bằng Công cụ > Công cụ riêng của từng lõi > Eden > Giải nén NSZ... và dùng tệp đó."
+		"error.solid_nsz": "%1 được nén thành một luồng (NSZ đặc), Eden không đọc được khi trò chơi đang chạy. Hãy tạo .nsp từ nó bằng Công cụ > Công cụ riêng của từng lõi > Eden > Giải nén NSZ... và dùng tệp đó.",
+		"error.no_vk_bridge": "Eden vẽ bằng Vulkan trên card đồ họa, và Chimera không giao thiết bị Vulkan nào. Thiết lập bộ kết xuất là vulkan-hw, và máy tính này có thể không có Vulkan để đưa ra. Bộ kết xuất opengl-hw có thể chạy thay thế.",
+		"error.vulkan_not_started": "Bộ kết xuất không khởi động: Eden không dùng được Vulkan trên card đồ họa của máy tính này. Bộ kết xuất opengl-hw có thể chạy thay thế.",
+		"error.vulkan_1x_only": "Bộ kết xuất vulkan-hw chỉ vẽ ở độ phân giải gốc của máy chơi game, nên Độ phân giải bên trong phải là 1x. Hãy chọn 1x, hoặc bộ kết xuất opengl-hw để có hình lớn hơn."
 	}
 }

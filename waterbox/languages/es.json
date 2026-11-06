@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderizador",
-		"setting.renderer.help": "Cómo se dibuja la imagen. El renderizador OpenGL de Eden dibuja en la tarjeta gráfica de tu ordenador. Es el único renderizador, porque los gráficos de una Switch no se pueden dibujar por software a una velocidad útil. Un ordenador que no puede ofrecer OpenGL 4.6 no puede ejecutar este núcleo. La tarjeta gráfica está fuera del núcleo y es distinta en cada ordenador. Lo que dibuja se vuelve a escribir en la memoria de la consola al final de cada fotograma, así que un estado guardado contiene las imágenes.",
+		"setting.renderer.help": "Cómo se dibuja la imagen. Las dos opciones son renderizadores propios de Eden, y ambas dibujan en la tarjeta gráfica de tu ordenador: opengl-hw con OpenGL 4.6, vulkan-hw con Vulkan. Los gráficos de una Switch no se pueden dibujar por software a una velocidad útil, así que un ordenador que no ofrezca ninguno de los dos no puede ejecutar este núcleo. La tarjeta gráfica está fuera del núcleo y es distinta en cada ordenador. Con cualquiera de los dos, lo que dibuja la tarjeta gráfica se vuelve a escribir en la memoria de la consola al final de cada fotograma, así que un estado guardado contiene las imágenes. Los dos renderizadores no escriben los mismos bytes, y un juego puede leerlos, así que una película debe reproducirse con el renderizador con el que se hizo. Por ahora vulkan-hw solo dibuja con Resolución interna 1x.",
 		"setting.console_mode": "Modo de la consola",
 		"setting.console_mode.help": "Si la consola se sostiene en la mano o está en su base. Los juegos lo preguntan, y muchos dibujan a 1280x720 en la mano y a 1920x1080 en la base, con otros detalles a juego. En la base, la imagen es de 1920x1080. Forma parte de la consola, así que una película necesita el mismo valor.",
 		"setting.resolution": "Resolución interna",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "No se pudo leer o escribir un archivo. ¿Está lleno el disco?",
 		"error.tool.not_zstd": "%1 dentro del archivo no se descomprime: el archivo está dañado.",
 		"error.tool.cut_short": "%1 dentro del archivo termina antes de tiempo: el archivo está dañado.",
-		"error.solid_nsz": "%1 está comprimido como un solo flujo (un NSZ sólido), que Eden no puede leer mientras se juega. Haga un .nsp de él con Herramientas > Herramientas de cada núcleo > Eden > Descomprimir NSZ... y use ese."
+		"error.solid_nsz": "%1 está comprimido como un solo flujo (un NSZ sólido), que Eden no puede leer mientras se juega. Haga un .nsp de él con Herramientas > Herramientas de cada núcleo > Eden > Descomprimir NSZ... y use ese.",
+		"error.no_vk_bridge": "Eden dibuja con Vulkan en la tarjeta gráfica, y Chimera no entregó ningún dispositivo Vulkan. El ajuste del renderizador es vulkan-hw, y puede que este ordenador no tenga Vulkan que ofrecer. El renderizador opengl-hw puede funcionar en su lugar.",
+		"error.vulkan_not_started": "El renderizador no arrancó: Eden no pudo usar Vulkan en la tarjeta gráfica de este ordenador. El renderizador opengl-hw puede funcionar en su lugar.",
+		"error.vulkan_1x_only": "El renderizador vulkan-hw solo dibuja a la resolución propia de la consola, así que Resolución interna debe ser 1x. Elige 1x, o el renderizador opengl-hw para una imagen más grande."
 	}
 }

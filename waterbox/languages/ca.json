@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderitzador",
-		"setting.renderer.help": "Com es dibuixa la imatge. El renderitzador OpenGL d'Eden dibuixa a la targeta gràfica del vostre ordinador. És l'únic renderitzador, perquè els gràfics d'una Switch no es poden dibuixar per programari a una velocitat útil. Un ordinador que no pot oferir OpenGL 4.6 no pot executar aquest nucli. La targeta gràfica és fora del nucli i és diferent a cada ordinador. El que dibuixa es torna a escriure a la memòria de la consola al final de cada fotograma, de manera que un estat desat conté les imatges.",
+		"setting.renderer.help": "Com es dibuixa la imatge. Les dues opcions són renderitzadors propis d'Eden, i totes dues dibuixen a la targeta gràfica de l'ordinador: opengl-hw amb OpenGL 4.6, vulkan-hw amb Vulkan. Els gràfics d'una Switch no es poden dibuixar per programari a una velocitat útil, així que un ordinador que no ofereixi cap dels dos no pot executar aquest nucli. La targeta gràfica és fora del nucli i és diferent a cada ordinador. Amb qualsevol dels dos, el que dibuixa la targeta gràfica es torna a escriure a la memòria de la consola al final de cada fotograma, així que un estat desat conté les imatges. Els dos renderitzadors no escriuen els mateixos bytes, i un joc els pot llegir, així que una pel·lícula s'ha de reproduir amb el renderitzador amb què es va fer. De moment vulkan-hw només dibuixa amb Resolució interna 1x.",
 		"setting.console_mode": "Mode de la consola",
 		"setting.console_mode.help": "Si la consola es té a la mà o és a la seva base. Els jocs ho pregunten, i molts dibuixen a 1280x720 a la mà i a 1920x1080 a la base, amb altres detalls a joc. A la base, la imatge és de 1920x1080. Forma part de la consola, així que una pel·lícula necessita el mateix valor.",
 		"setting.resolution": "Resolució interna",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "No s'ha pogut llegir o escriure un fitxer. El disc és ple?",
 		"error.tool.not_zstd": "%1 dins del fitxer no es descomprimeix: el fitxer està malmès.",
 		"error.tool.cut_short": "%1 dins del fitxer s'acaba massa aviat: el fitxer està malmès.",
-		"error.solid_nsz": "%1 està comprimit com un sol flux (un NSZ sòlid), que l'Eden no pot llegir mentre es juga. Feu-ne un .nsp amb Eines > Eines pròpies dels nuclis > Eden > Descomprimeix NSZ... i feu servir aquest."
+		"error.solid_nsz": "%1 està comprimit com un sol flux (un NSZ sòlid), que l'Eden no pot llegir mentre es juga. Feu-ne un .nsp amb Eines > Eines pròpies dels nuclis > Eden > Descomprimeix NSZ... i feu servir aquest.",
+		"error.no_vk_bridge": "Eden dibuixa amb Vulkan a la targeta gràfica, i Chimera no ha lliurat cap dispositiu Vulkan. L'ajust del renderitzador és vulkan-hw, i potser aquest ordinador no té Vulkan per oferir. El renderitzador opengl-hw potser funciona en el seu lloc.",
+		"error.vulkan_not_started": "El renderitzador no s'ha iniciat: Eden no ha pogut fer servir Vulkan a la targeta gràfica d'aquest ordinador. El renderitzador opengl-hw potser funciona en el seu lloc.",
+		"error.vulkan_1x_only": "El renderitzador vulkan-hw només dibuixa a la resolució pròpia de la consola, així que Resolució interna ha de ser 1x. Trieu 1x, o el renderitzador opengl-hw per a una imatge més gran."
 	}
 }

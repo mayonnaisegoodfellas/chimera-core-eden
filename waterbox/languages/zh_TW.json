@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "轉譯器",
-		"setting.renderer.help": "畫面的繪製方式。Eden 的 OpenGL 轉譯器在電腦的顯示卡上繪製。它是唯一的轉譯器，因為 Switch 的圖形無法用軟體以可用的速度繪製。無法提供 OpenGL 4.6 的電腦不能執行這個核心。顯示卡位於核心之外，每台電腦都不一樣。顯示卡繪製的內容會在每一格結束時寫回主機的記憶體，所以即時存檔包含這些畫面。",
+		"setting.renderer.help": "畫面的繪製方式。兩個選項都是 Eden 自己的轉譯器，都在電腦的顯示卡上繪製：opengl-hw 使用 OpenGL 4.6，vulkan-hw 使用 Vulkan。Switch 的圖形無法用軟體以可用的速度繪製，所以兩者都無法提供的電腦不能執行這個核心。顯示卡在核心之外，每台電腦都不一樣。無論用哪個轉譯器，顯示卡畫出的內容都會在每一格結束時寫回主機的記憶體，所以即時存檔包含畫面。兩個轉譯器寫回的位元組不同，而遊戲可能會讀取它們，所以錄影必須用製作時的轉譯器播放。目前 vulkan-hw 只在內部解析度 1x 下繪製。",
 		"setting.console_mode": "主機模式",
 		"setting.console_mode.help": "主機是拿在手上，還是放在底座裡。遊戲會詢問是哪一種，很多遊戲在手持時以 1280x720 繪製，在底座裡以 1920x1080 繪製，其他細節也隨之改變。在底座裡時，畫面為 1920x1080。這是主機的一部分，所以影片需要相同的值。",
 		"setting.resolution": "內部解析度",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "無法讀取或寫入檔案。磁碟滿了嗎？",
 		"error.tool.not_zstd": "檔案中的 %1 無法解壓縮：檔案已損壞。",
 		"error.tool.cut_short": "檔案中的 %1 提前結束：檔案已損壞。",
-		"error.solid_nsz": "%1 是以單一資料流壓縮的（固實 NSZ），遊戲執行時 Eden 無法讀取。請用 工具(T) > 核心專用工具 > Eden > 解壓縮 NSZ... 製作一個 .nsp，並使用它。"
+		"error.solid_nsz": "%1 是以單一資料流壓縮的（固實 NSZ），遊戲執行時 Eden 無法讀取。請用 工具(T) > 核心專用工具 > Eden > 解壓縮 NSZ... 製作一個 .nsp，並使用它。",
+		"error.no_vk_bridge": "Eden 在顯示卡上用 Vulkan 繪製，但 Chimera 沒有交出 Vulkan 裝置。轉譯器設定為 vulkan-hw，這台電腦可能沒有可以提供的 Vulkan。可以改用 opengl-hw 轉譯器試試。",
+		"error.vulkan_not_started": "轉譯器沒有啟動：Eden 無法在這台電腦的顯示卡上使用 Vulkan。可以改用 opengl-hw 轉譯器試試。",
+		"error.vulkan_1x_only": "vulkan-hw 轉譯器只按主機本身的解析度繪製，所以內部解析度必須是 1x。請選擇 1x，或者為了更大的畫面改用 opengl-hw 轉譯器。"
 	}
 }

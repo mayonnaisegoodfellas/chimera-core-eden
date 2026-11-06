@@ -26,6 +26,14 @@ add_custom_command(OUTPUT ${GLHOST}
 	DEPENDS glhost-parts $<TARGET_OBJECTS:glhost-parts>
 	COMMAND_EXPAND_LISTS)
 
+# The Vulkan bridge, both halves, as in the sandbox: the guest's (the vk*
+# wrappers the renderer is given in place of a loader) and the host's, which
+# finds the machine's own Vulkan. Built with the Vulkan headers the bridge was
+# generated from, not Eden's.
+set(GENVK ${W}/../build/generated-vk)
+add_library(chimera-vkbridge STATIC ${MB}/source/vk/vk-guest.c ${GENVK}/vk-bridge-guest.c ${MB}/source/vk/vk-host.c)
+target_include_directories(chimera-vkbridge PRIVATE ${MB}/source/vk ${MB}/source/host ${GENVK} ${MB}/extern/vulkan-headers/include)
+
 add_executable(eden-run-native
 	run-native.cpp
 	${W}/driver/eden_driver.cpp
@@ -38,14 +46,14 @@ add_executable(eden-run-native
 	${GLHOST}
 )
 set_source_files_properties(${GLHOST} PROPERTIES EXTERNAL_OBJECT TRUE GENERATED TRUE)
-target_include_directories(eden-run-native PRIVATE ${CMAKE_SOURCE_DIR}/src ${W}/driver ${MB}/source/gl ${GEN})
+target_include_directories(eden-run-native PRIVATE ${CMAKE_SOURCE_DIR}/src ${W}/driver ${MB}/source/gl ${GEN} ${MB}/source/vk)
 # memfs defines both spellings of the C library's file calls (pread and
 # pread64); Eden's _FILE_OFFSET_BITS=64 would make them one symbol
 set_source_files_properties(${W}/driver/memfs.cpp PROPERTIES COMPILE_OPTIONS "-U_FILE_OFFSET_BITS")
 # the generated wrappers want glad 2's types: built apart from Eden's glad
 set_source_files_properties(${GEN}/gl-bridge-guest.cpp PROPERTIES INCLUDE_DIRECTORIES "${W}/glad/include;${GEN};${MB}/source/gl")
 target_link_libraries(eden-run-native PRIVATE common core hid_core audio_core video_core frontend_common glad fmt::fmt
-	GPUOpen::VulkanMemoryAllocator Vulkan::Headers ZLIB::ZLIB OpenGL::EGL)
+	GPUOpen::VulkanMemoryAllocator Vulkan::Headers ZLIB::ZLIB OpenGL::EGL chimera-vkbridge ${CMAKE_DL_LIBS})
 # our FFmpeg is static: the libraries once more after everything, in their
 # order of dependence
 target_link_libraries(eden-run-native PRIVATE

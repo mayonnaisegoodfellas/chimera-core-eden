@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Render motoru",
-		"setting.renderer.help": "Görüntünün nasıl çizildiği. Eden emülatörünün OpenGL render motoru, bilgisayarının ekran kartında çizer. Tek render motoru budur, çünkü bir Switch konsolunun grafikleri yazılımla işe yarar bir hızda çizilemez. OpenGL 4.6 sağlayamayan bir bilgisayar bu çekirdeği çalıştıramaz. Ekran kartı çekirdeğin dışındadır ve her bilgisayarda farklıdır. Onun çizdikleri her karenin sonunda konsolun belleğine geri yazılır, bu yüzden bir durum kaydı görüntüleri içerir.",
+		"setting.renderer.help": "Görüntünün nasıl çizildiği. İki seçenek de Eden emülatörünün kendi render motorlarıdır ve ikisi de bilgisayarının ekran kartında çizer: opengl-hw OpenGL 4.6 ile, vulkan-hw Vulkan ile. Bir Switch konsolunun grafikleri yazılımla işe yarar bir hızda çizilemez, bu yüzden ikisinden birini de sağlayamayan bir bilgisayar bu çekirdeği çalıştıramaz. Ekran kartı çekirdeğin dışındadır ve her bilgisayarda farklıdır. Hangisiyle olursa olsun ekran kartının çizdikleri her karenin sonunda konsolun belleğine geri yazılır, bu yüzden bir durum kaydı görüntüleri içerir. İki render motoru aynı baytları geri yazmaz ve bir oyun onları okuyabilir, bu yüzden bir film yapıldığı render motoruyla oynatılmalıdır. Şimdilik vulkan-hw yalnızca İç çözünürlük 1x ile çizer.",
 		"setting.console_mode": "Konsol modu",
 		"setting.console_mode.help": "Konsolun elde mi tutulduğu yoksa yuvasında mı durduğu. Oyunlar bunu sorar ve birçoğu elde 1280x720, yuvada 1920x1080 çözünürlükte, diğer ayrıntıları da buna uydurarak çizer. Yuvadayken görüntü 1920x1080 olur. Konsolun bir parçasıdır, bu yüzden bir filmin aynı değere ihtiyacı vardır.",
 		"setting.resolution": "İç çözünürlük",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Bir dosya okunamadı ya da yazılamadı. Disk dolu mu?",
 		"error.tool.not_zstd": "Dosyanın içindeki %1 açılmıyor: dosya hasarlı.",
 		"error.tool.cut_short": "Dosyanın içindeki %1 erken bitiyor: dosya hasarlı.",
-		"error.solid_nsz": "%1 tek bir akış olarak sıkıştırılmış (katı NSZ); Eden bunu oyun çalışırken okuyamaz. Araçlar > Çekirdeğe özel araçlar > Eden > NSZ'yi aç... ile ondan bir .nsp yapın ve onu kullanın."
+		"error.solid_nsz": "%1 tek bir akış olarak sıkıştırılmış (katı NSZ); Eden bunu oyun çalışırken okuyamaz. Araçlar > Çekirdeğe özel araçlar > Eden > NSZ'yi aç... ile ondan bir .nsp yapın ve onu kullanın.",
+		"error.no_vk_bridge": "Eden emülatörü ekran kartında Vulkan ile çizer ve Chimera programı hiçbir Vulkan aygıtı devretmedi. Render motoru ayarı vulkan-hw ve bu bilgisayarın verebileceği bir Vulkan desteği olmayabilir. Onun yerine opengl-hw render motoru çalışabilir.",
+		"error.vulkan_not_started": "Render motoru başlamadı: Eden emülatörü bu bilgisayarın ekran kartında Vulkan desteğini kullanamadı. Onun yerine opengl-hw render motoru çalışabilir.",
+		"error.vulkan_1x_only": "vulkan-hw render motoru yalnızca konsolun kendi çözünürlüğünde çizer, bu yüzden İç çözünürlük 1x olmalıdır. 1x seç ya da daha büyük bir görüntü için opengl-hw render motorunu seç."
 	}
 }

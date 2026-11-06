@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Piirrin",
-		"setting.renderer.help": "Miten kuva piirretään. Eden-emulaattorin OpenGL-piirrin piirtää tietokoneesi näytönohjaimella. Se on ainoa piirrin, koska Switch-konsolin grafiikkaa ei voi piirtää ohjelmallisesti käyttökelpoisella nopeudella. Tietokone, joka ei pysty tarjoamaan OpenGL 4.6 -tasoa, ei voi ajaa tätä ydintä. Näytönohjain on ytimen ulkopuolella ja erilainen joka tietokoneessa. Se, mitä se piirtää, kirjoitetaan takaisin konsolin muistiin jokaisen ruudun lopussa, joten tilatallennus sisältää kuvat.",
+		"setting.renderer.help": "Miten kuva piirretään. Molemmat vaihtoehdot ovat Eden-emulaattorin omia piirtimiä, ja molemmat piirtävät tietokoneesi näytönohjaimella: opengl-hw OpenGL 4.6 -rajapinnalla, vulkan-hw Vulkan-rajapinnalla. Switch-konsolin grafiikkaa ei voi piirtää ohjelmallisesti käyttökelpoisella nopeudella, joten tietokone, joka ei pysty tarjoamaan kumpaakaan, ei voi ajaa tätä ydintä. Näytönohjain on ytimen ulkopuolella ja erilainen joka tietokoneessa. Kummallakin piirtimellä se, mitä näytönohjain piirtää, kirjoitetaan takaisin konsolin muistiin jokaisen ruudun lopussa, joten tilatallennus sisältää kuvat. Piirtimet eivät kirjoita takaisin samoja tavuja, ja peli voi lukea niitä, joten elokuva on toistettava sillä piirtimellä, jolla se tehtiin. Toistaiseksi vulkan-hw piirtää vain asetuksella Sisäinen tarkkuus 1x.",
 		"setting.console_mode": "Konsolin tila",
 		"setting.console_mode.help": "Pidetäänkö konsolia kädessä vai onko se telakassaan. Pelit kysyvät tätä, ja monet piirtävät kädessä tarkkuudella 1280x720 ja telakassa tarkkuudella 1920x1080, ja muut yksityiskohdat sen mukaan. Telakassa kuva on 1920x1080. Se kuuluu konsoliin, joten elokuva tarvitsee saman arvon.",
 		"setting.resolution": "Sisäinen tarkkuus",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Tiedostoa ei voitu lukea tai kirjoittaa. Onko levy täynnä?",
 		"error.tool.not_zstd": "Tiedoston sisällä oleva %1 ei purkaudu: tiedosto on vaurioitunut.",
 		"error.tool.cut_short": "Tiedoston sisällä oleva %1 loppuu liian aikaisin: tiedosto on vaurioitunut.",
-		"error.solid_nsz": "%1 on pakattu yhtenä virtana (kiinteä NSZ), jota Eden ei voi lukea pelin ollessa käynnissä. Tee siitä .nsp-tiedosto valinnalla Työkalut > Ydinkohtaiset työkalut > Eden > Pura NSZ... ja käytä sitä."
+		"error.solid_nsz": "%1 on pakattu yhtenä virtana (kiinteä NSZ), jota Eden ei voi lukea pelin ollessa käynnissä. Tee siitä .nsp-tiedosto valinnalla Työkalut > Ydinkohtaiset työkalut > Eden > Pura NSZ... ja käytä sitä.",
+		"error.no_vk_bridge": "Eden piirtää Vulkan-rajapinnalla näytönohjaimella, eikä Chimera-ohjelma antanut Vulkan-laitetta. Piirtimen asetus on vulkan-hw, eikä tällä tietokoneella ehkä ole Vulkan-rajapintaa annettavaksi. Piirrin opengl-hw voi toimia sen sijaan.",
+		"error.vulkan_not_started": "Piirrin ei käynnistynyt: Eden ei voinut käyttää Vulkan-rajapintaa tämän tietokoneen näytönohjaimella. Piirrin opengl-hw voi toimia sen sijaan.",
+		"error.vulkan_1x_only": "Piirrin vulkan-hw piirtää vain konsolin omalla tarkkuudella, joten asetuksen Sisäinen tarkkuus on oltava 1x. Valitse 1x tai suuremmalle kuvalle piirrin opengl-hw."
 	}
 }

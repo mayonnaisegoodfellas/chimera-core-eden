@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Moteur de rendu",
-		"setting.renderer.help": "La façon dont l'image est dessinée. Le moteur de rendu OpenGL d'Eden dessine sur la carte graphique de votre ordinateur. C'est le seul moteur de rendu, car les graphismes d'une Switch ne peuvent pas être dessinés par logiciel à une vitesse utile. Un ordinateur qui ne peut pas fournir OpenGL 4.6 ne peut pas faire tourner ce cœur. La carte graphique est en dehors du cœur et diffère d'un ordinateur à l'autre. Ce qu'elle dessine est réécrit dans la mémoire de la console à la fin de chaque image, si bien qu'un état enregistré contient les images.",
+		"setting.renderer.help": "La façon dont l'image est dessinée. Les deux choix sont des moteurs de rendu propres à Eden, et tous deux dessinent sur la carte graphique de votre ordinateur : opengl-hw avec OpenGL 4.6, vulkan-hw avec Vulkan. Les graphismes d'une Switch ne peuvent pas être dessinés par logiciel à une vitesse utile, donc un ordinateur qui ne peut fournir ni l'un ni l'autre ne peut pas faire tourner ce cœur. La carte graphique est hors du cœur et diffère sur chaque ordinateur. Avec l'un ou l'autre moteur, ce que la carte graphique dessine est réécrit dans la mémoire de la console à la fin de chaque image, donc une sauvegarde d'état contient les images. Les deux moteurs ne réécrivent pas les mêmes octets, et un jeu peut les lire, donc un film doit être joué avec le moteur avec lequel il a été fait. Pour l'instant, vulkan-hw ne dessine qu'en Résolution interne 1x.",
 		"setting.console_mode": "Mode de la console",
 		"setting.console_mode.help": "Si la console est tenue en main ou posée sur sa station d'accueil. Les jeux le demandent, et beaucoup dessinent en 1280x720 en main et en 1920x1080 sur la station, avec d'autres détails assortis. Sur la station, l'image fait 1920x1080. Cela fait partie de la console, donc un film a besoin de la même valeur.",
 		"setting.resolution": "Résolution interne",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Un fichier n'a pas pu être lu ou écrit. Le disque est-il plein ?",
 		"error.tool.not_zstd": "%1 dans le fichier ne se décompresse pas : le fichier est endommagé.",
 		"error.tool.cut_short": "%1 dans le fichier s'arrête trop tôt : le fichier est endommagé.",
-		"error.solid_nsz": "%1 est compressé en un seul flux (un NSZ solide), qu'Eden ne peut pas lire pendant qu'un jeu tourne. Faites-en un .nsp avec Outils > Outils propres aux cœurs > Eden > Décompresser un NSZ..., et utilisez celui-ci."
+		"error.solid_nsz": "%1 est compressé en un seul flux (un NSZ solide), qu'Eden ne peut pas lire pendant qu'un jeu tourne. Faites-en un .nsp avec Outils > Outils propres aux cœurs > Eden > Décompresser un NSZ..., et utilisez celui-ci.",
+		"error.no_vk_bridge": "Eden dessine avec Vulkan sur la carte graphique, et Chimera n'a transmis aucun périphérique Vulkan. Le réglage du moteur de rendu est vulkan-hw, et cet ordinateur n'a peut-être pas de Vulkan à fournir. Le moteur opengl-hw peut fonctionner à la place.",
+		"error.vulkan_not_started": "Le moteur de rendu n'a pas démarré : Eden n'a pas pu utiliser Vulkan sur la carte graphique de cet ordinateur. Le moteur opengl-hw peut fonctionner à la place.",
+		"error.vulkan_1x_only": "Le moteur vulkan-hw ne dessine qu'à la résolution propre de la console, donc Résolution interne doit valoir 1x. Choisissez 1x, ou le moteur opengl-hw pour une image plus grande."
 	}
 }

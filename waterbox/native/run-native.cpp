@@ -14,6 +14,7 @@ extern "C" {
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
 
 extern "C" {
@@ -21,6 +22,7 @@ extern "C" {
 int Init(void);
 const char *GetLoadError(void);
 void SetGpuBridge(uint64_t addr);
+void SetVulkanBridge(uint64_t addr);
 void SetGlThreadHooks(void (*bind)(), void (*release)());
 void FrameAdvance(uint64_t buttons);
 uint32_t *GetVideoBgra(void);
@@ -48,6 +50,20 @@ uintptr_t chimera_gl_host_dispatch(uintptr_t op, uintptr_t a, uintptr_t b, uintp
 int chimera_gl_host_bind_current(void);
 void chimera_gl_host_release_current(void);
 unsigned long chimera_gl_host_unhandled(long *last_op);
+// the Vulkan bridge's host half (miniBox source/vk/vk-host.h)
+int chimera_vk_host_init(char *err, int errlen);
+uintptr_t chimera_vk_host_dispatch(uintptr_t op, uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e);
+const char *chimera_vk_host_description(void);
+unsigned long chimera_vk_host_refused(long *last_op);
+}
+
+// The Vulkan bridge's host half keeps its scratch in globals: in the sandbox
+// every guest thread is the one host thread, here they are real threads, so
+// one call at a time.
+static std::recursive_mutex vk_calls;
+static uintptr_t vk_dispatch_one_at_a_time(uintptr_t op, uintptr_t a, uintptr_t b, uintptr_t c, uintptr_t d, uintptr_t e) {
+    std::scoped_lock lock{vk_calls};
+    return chimera_vk_host_dispatch(op, a, b, c, d, e);
 }
 
 static void bind_gl() {
@@ -125,7 +141,16 @@ int main(int argc, char **argv) {
     }
     o.work = work_abs;
 
-    if (!o.renderer || std::string(o.renderer) != "null") {
+    const bool vulkan = o.renderer && std::string(o.renderer) == "vulkan-hw";
+    if (vulkan) {
+        char err[256] = "";
+        if (chimera_vk_host_init(err, sizeof err) != 0) {
+            fprintf(stderr, "vulkan bridge: %s\n", err);
+            return 5;
+        }
+        fprintf(stderr, "vulkan bridge: %s\n", chimera_vk_host_description());
+        SetVulkanBridge(reinterpret_cast<uintptr_t>(&vk_dispatch_one_at_a_time));
+    } else if (!o.renderer || std::string(o.renderer) != "null") {
         char err[256] = "";
         if (chimera_gl_host_init(err, sizeof err) != 0) {
             fprintf(stderr, "gpu bridge: %s\n", err);
@@ -145,6 +170,10 @@ int main(int argc, char **argv) {
     const char *slash = strrchr(app, '/');
     const int rc = harness_run(&c, &o, slash ? slash + 1 : app);
     long last = 0;
+    if (vulkan) {
+        const unsigned long refused = chimera_vk_host_refused(&last);
+        fprintf(stderr, "vulkan bridge: %lu calls refused (last opcode %ld)\n", refused, last);
+    }
     const unsigned long unhandled = chimera_gl_host_unhandled(&last);
     if (unhandled)
         fprintf(stderr, "gpu bridge: %lu calls had no case (last opcode %ld)\n", unhandled, last);

@@ -13,3 +13,15 @@ out="$root/build/generated-gl"
 mkdir -p "$out"
 python3 "$mb/source/gl/gen-gl-bridge.py" "$here/glad/include/glad/gl.h" "$mb/source/gl/gl-entry-points.txt" "$out" >/dev/null
 sed -i '/^\tglad_gl[A-Za-z0-9_]* = w_gl[A-Za-z0-9_]*;$/d' "$out/gl-bridge-guest.cpp"
+
+# The Vulkan bridge's halves (build/generated-vk), the same way, from the
+# Vulkan registry miniBox carries: Eden's Vulkan renderer is handed the
+# guest's vkGetInstanceProcAddr in place of a loader.
+vk="$root/build/generated-vk"
+rm -rf "$vk.new"
+python3 "$mb/source/vk/gen-vk-bridge.py" "$mb/extern/vulkan-headers/registry/vk.xml" "$mb/source/vk/vk-entry-points.txt" "$vk.new" >/dev/null
+mkdir -p "$vk"
+for f in vk-bridge-ops.h vk-bridge-guest.c vk-bridge-host.inc; do
+	cmp -s "$vk.new/$f" "$vk/$f" 2>/dev/null || cp "$vk.new/$f" "$vk/$f"
+done
+rm -rf "$vk.new"

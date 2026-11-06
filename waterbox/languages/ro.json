@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "Cum este desenată imaginea. Rendererul OpenGL al emulatorului Eden desenează pe placa video a calculatorului tău. Este singurul renderer, pentru că grafica unei console Switch nu poate fi desenată software la o viteză utilă. Un calculator care nu poate oferi OpenGL 4.6 nu poate rula acest core. Placa video este în afara core-ului și diferă de la un calculator la altul. Ce desenează ea este scris înapoi în memoria consolei la sfârșitul fiecărui cadru, astfel că o salvare de stare conține imaginile.",
+		"setting.renderer.help": "Cum este desenată imaginea. Ambele variante sunt randatoare proprii ale emulatorului Eden și ambele desenează pe placa video a calculatorului: opengl-hw cu OpenGL 4.6, vulkan-hw cu Vulkan. Grafica unei console Switch nu poate fi desenată software la o viteză utilă, așa că un calculator care nu oferă niciunul dintre ele nu poate rula acest nucleu. Placa video este în afara nucleului și diferă pe fiecare calculator. Cu oricare dintre ele, ceea ce desenează placa video este scris înapoi în memoria consolei la sfârșitul fiecărui cadru, așa că o stare salvată conține imaginile. Cele două randatoare nu scriu înapoi aceiași octeți, iar un joc îi poate citi, așa că un film trebuie redat cu randatorul cu care a fost făcut. Deocamdată vulkan-hw desenează doar cu Rezoluție internă 1x.",
 		"setting.console_mode": "Modul consolei",
 		"setting.console_mode.help": "Dacă consola este ținută în mână sau stă în dock. Jocurile întreabă care, iar multe desenează la 1280x720 în mână și la 1920x1080 în dock, cu alte detalii pe măsură. În dock, imaginea este de 1920x1080. Face parte din consolă, deci un film are nevoie de aceeași valoare.",
 		"setting.resolution": "Rezoluție internă",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Un fișier nu a putut fi citit sau scris. Este discul plin?",
 		"error.tool.not_zstd": "%1 din fișier nu se dezarhivează: fișierul este deteriorat.",
 		"error.tool.cut_short": "%1 din fișier se termină prea devreme: fișierul este deteriorat.",
-		"error.solid_nsz": "%1 este comprimat ca un singur flux (un NSZ solid), pe care Eden nu îl poate citi în timp ce rulează un joc. Faceți din el un .nsp cu Unelte > Unelte specifice nucleelor > Eden > Dezarhivează NSZ... și folosiți-l pe acela."
+		"error.solid_nsz": "%1 este comprimat ca un singur flux (un NSZ solid), pe care Eden nu îl poate citi în timp ce rulează un joc. Faceți din el un .nsp cu Unelte > Unelte specifice nucleelor > Eden > Dezarhivează NSZ... și folosiți-l pe acela.",
+		"error.no_vk_bridge": "Emulatorul Eden desenează cu Vulkan pe placa video, iar programul Chimera nu a predat niciun dispozitiv Vulkan. Setarea randatorului este vulkan-hw, iar acest calculator poate nu are Vulkan de oferit. Randatorul opengl-hw poate funcționa în schimb.",
+		"error.vulkan_not_started": "Randatorul nu a pornit: emulatorul Eden nu a putut folosi Vulkan pe placa video a acestui calculator. Randatorul opengl-hw poate funcționa în schimb.",
+		"error.vulkan_1x_only": "Randatorul vulkan-hw desenează doar la rezoluția proprie a consolei, așa că Rezoluție internă trebuie să fie 1x. Alege 1x sau, pentru o imagine mai mare, randatorul opengl-hw."
 	}
 }

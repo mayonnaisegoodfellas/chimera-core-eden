@@ -50,8 +50,12 @@ echo "built $out/core.wbx"
 # the host runner for the gate
 mbhost="${MINIBOX_HOST_DIR:-$mb/build/meson-linux/source/host}"
 [ -f "$mbhost/libminiboxhost.so" ] || mbhost="$mbuild/source/host"
+# (the Vulkan bridge's host half is built apart: it wants the Vulkan headers
+# it was generated from)
+gcc -O2 -g -Wall -c -I"$mb/source/vk" -I"$mb/source/host" -I"$root/build/generated-vk" \
+	-I"$mb/extern/vulkan-headers/include" -o "$out/vk-host.o" "$mb/source/vk/vk-host.c"
 gcc -O2 -g -Wall -DCHIMERA_GL_BRIDGE -I"$here" -I"$mb/source/host" -I"$mb/source/gl" \
 	-I"$here/glad/include" -I"$root/build/generated-gl" \
-	-o "$out/run-wbx" "$here/run-wbx.c" "$here/gl-host.c" "$here/glad/src/gl.c" \
-	"$mbhost/libminiboxhost.so" -Wl,-rpath,"$mbhost" -lEGL
+	-o "$out/run-wbx" "$here/run-wbx.c" "$here/gl-host.c" "$here/glad/src/gl.c" "$out/vk-host.o" \
+	"$mbhost/libminiboxhost.so" -Wl,-rpath,"$mbhost" -lEGL -ldl
 echo "built $out/run-wbx"

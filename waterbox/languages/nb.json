@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "Hvordan bildet tegnes. OpenGL-rendereren i Eden tegner på grafikkortet i datamaskinen din. Den er den eneste rendereren, fordi grafikken i en Switch ikke kan tegnes i programvare med en nyttig hastighet. En datamaskin som ikke kan gi OpenGL 4.6, kan ikke kjøre denne kjernen. Grafikkortet ligger utenfor kjernen og er forskjellig på hver datamaskin. Det det tegner, skrives tilbake til konsollens minne på slutten av hvert bilde, så en lagringstilstand inneholder bildene.",
+		"setting.renderer.help": "Hvordan bildet tegnes. Begge valgene er renderere fra Eden selv, og begge tegner på datamaskinens grafikkort: opengl-hw med OpenGL 4.6, vulkan-hw med Vulkan. Grafikken fra en Switch kan ikke tegnes i programvare med brukbar hastighet, så en datamaskin som ikke kan tilby noen av dem, kan ikke kjøre denne kjernen. Grafikkortet ligger utenfor kjernen og er forskjellig på hver datamaskin. Med begge rendererne skrives det grafikkortet tegner tilbake i konsollens minne på slutten av hvert bilde, så en lagringstilstand inneholder bildene. De to rendererne skriver ikke de samme bytene tilbake, og et spill kan lese dem, så en film må spilles av med rendereren den ble laget med. Inntil videre tegner vulkan-hw bare med Intern oppløsning 1x.",
 		"setting.console_mode": "Konsollmodus",
 		"setting.console_mode.help": "Om konsollen holdes i hånden eller står i dokken sin. Spill spør hvilken, og mange tegner i 1280x720 i hånden og i 1920x1080 i dokken, med andre detaljer som passer. I dokken er bildet 1920x1080. Det hører til konsollen, så en film trenger samme verdi.",
 		"setting.resolution": "Intern oppløsning",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "En fil kunne ikke leses eller skrives. Er disken full?",
 		"error.tool.not_zstd": "%1 i filen lar seg ikke pakke ut: filen er skadet.",
 		"error.tool.cut_short": "%1 i filen slutter for tidlig: filen er skadet.",
-		"error.solid_nsz": "%1 er komprimert som én strøm (en solid NSZ), som Eden ikke kan lese mens et spill kjører. Lag en .nsp av den med Verktøy > Kjernespesifikke verktøy > Eden > Pakk ut NSZ..., og bruk den."
+		"error.solid_nsz": "%1 er komprimert som én strøm (en solid NSZ), som Eden ikke kan lese mens et spill kjører. Lag en .nsp av den med Verktøy > Kjernespesifikke verktøy > Eden > Pakk ut NSZ..., og bruk den.",
+		"error.no_vk_bridge": "Eden tegner med Vulkan på grafikkortet, og Chimera overleverte ingen Vulkan-enhet. Innstillingen for rendereren er vulkan-hw, og denne datamaskinen har kanskje ikke Vulkan å gi. Rendereren opengl-hw kan fungere i stedet.",
+		"error.vulkan_not_started": "Rendereren startet ikke: Eden kunne ikke bruke Vulkan på grafikkortet i denne datamaskinen. Rendereren opengl-hw kan fungere i stedet.",
+		"error.vulkan_1x_only": "Rendereren vulkan-hw tegner bare i konsollens egen oppløsning, så Intern oppløsning må være 1x. Velg 1x, eller rendereren opengl-hw for et større bilde."
 	}
 }

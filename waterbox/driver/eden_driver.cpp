@@ -30,6 +30,7 @@ bool chimera_solid_nsz(const char *path);
 #endif
 
 #include "gl-bridge.h"
+#include "vk-bridge.h"
 
 #include "audio_core/audio_core.h"
 #include "audio_core/sink/chimera_sink.h"
@@ -61,6 +62,7 @@ bool chimera_solid_nsz(const char *path);
 #include "hid_core/hid_core.h"
 #include "video_core/gpu.h"
 #include "video_core/renderer_base.h"
+#include "video_core/renderer_vulkan/chimera_picture.h"
 #include "video_core/video_core.h"
 
 namespace chimera_eden {
@@ -89,11 +91,24 @@ struct Screen {
     void (*bind)() = nullptr;
     void (*release)() = nullptr;
     bool opengl = false;
+    // Eden's Vulkan renderer instead, through the Vulkan bridge: it draws
+    // the screen into an image of its own and hands the rows over
+    // (vulkan_picture)
+    bool vulkan = false;
     bool readback = true;
     unsigned int fbo = 0, color = 0, vao = 0;
     // the context the renderer's objects (and these) were made in: it moves
     // when a savestate is loaded
     uint64_t context_id = 0;
+
+    // a renderer on the host's GPU, either one
+    bool gpu() const {
+        return opengl || vulkan;
+    }
+    // the context the GPU calls land on now
+    uint64_t current_context() const {
+        return vulkan ? chimera_vk_context_id() : chimera_gl_context_id();
+    }
     // the picture as GL reads it and as the frontend takes it: in memory no
     // state carries (a state is the machine; the frontend keeps pictures of
     // its own)
@@ -170,6 +185,27 @@ struct Screen {
     }
 };
 Screen g_screen;
+
+// The Vulkan renderer's screen, read back at every present: BGRA rows, top
+// first. The screen has no alpha (as with OpenGL).
+void vulkan_picture(const u8 *bgra, u32 width, u32 height) {
+    if (!g_screen.latest || static_cast<int>(width) != SCREEN_W || static_cast<int>(height) != SCREEN_H)
+        return;
+    const size_t pixels = static_cast<size_t>(width) * height;
+    for (size_t i = 0; i < pixels; i++) {
+        uint32_t pixel;
+        std::memcpy(&pixel, bgra + i * 4, 4);
+        pixel |= 0xFF000000u;
+        std::memcpy(g_screen.latest + i * 4, &pixel, 4);
+    }
+}
+
+// Between the old Vulkan renderer and the new one: the buffers the bridge
+// lent the old one as mappings were memory of a context that is gone.
+void rebuild_own_vulkan() {
+    chimera_vk_forget_mappings();
+    g_screen.context_id = chimera_vk_context_id();
+}
 
 class BridgeContext : public Core::Frontend::GraphicsContext {
 public:
@@ -1182,8 +1218,19 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
     SCREEN_W = SCREEN_W * scale->num / scale->den;
     SCREEN_H = SCREEN_H * scale->num / scale->den;
     g_screen.allocate();
-    g_screen.opengl = options.renderer != "null";
-    v.renderer_backend.SetValue(g_screen.opengl ? Settings::RendererBackend::OpenGL_GLSL : Settings::RendererBackend::Null);
+    g_screen.opengl = options.renderer == "opengl";
+    g_screen.vulkan = options.renderer == "vulkan";
+    v.renderer_backend.SetValue(g_screen.opengl   ? Settings::RendererBackend::OpenGL_GLSL
+                                : g_screen.vulkan ? Settings::RendererBackend::Vulkan
+                                                  : Settings::RendererBackend::Null);
+    if (g_screen.vulkan) {
+        // the bridge offers one device; the window's present is a read back
+        v.vulkan_device.SetValue(0);
+        v.async_presentation.SetValue(false);
+        v.renderer_debug.SetValue(false);
+        Vulkan::g_chimera_picture = vulkan_picture;
+        g_screen.context_id = chimera_vk_context_id();
+    }
     // the screen is the console's own, 1280x720, whatever the game would do
     // on a television
     v.use_docked_mode.SetValue(options.docked ? Settings::ConsoleMode::Docked : Settings::ConsoleMode::Handheld);
@@ -1194,6 +1241,11 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
     // state carries, and a scratch one it does not. NOW and not on first use:
     // whether a page is mapped at all is part of every state. Address space,
     // not memory - a page is committed when it is first written.
+    // (Vulkan keeps nothing of the kind yet: it draws at 1x only, below)
+    if (g_screen.vulkan && scale->num != scale->den) {
+        error = "error.vulkan_1x_only";
+        return false;
+    }
     if (g_screen.opengl && scale->num != scale->den) {
         static constexpr size_t BLOCK = size_t{2} << 30;
         void *block = mmap(nullptr, BLOCK, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
@@ -1260,7 +1312,10 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
             const char *version = g_screen.opengl ? reinterpret_cast<const char *>(stable_get_string(GL_VERSION)) : nullptr;
             if (g_screen.opengl && g_screen.release)
                 g_screen.release();
-            error = version ? std::string("error.gl_too_old" TEXT_ARG) + version : std::string("error.gl_no_version");
+            if (g_screen.vulkan)
+                error = "error.vulkan_not_started";
+            else
+                error = version ? std::string("error.gl_too_old" TEXT_ARG) + version : std::string("error.gl_no_version");
         } else if (rc == Core::SystemResultStatus::ErrorGetLoader) {
             error = "error.not_a_game";
         } else if (code >= static_cast<u32>(Core::SystemResultStatus::ErrorLoader)) {
@@ -1290,7 +1345,7 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
                 m.ended_ns = static_cast<uint64_t>(m.system.CoreTiming().GetGlobalTimeNs().count());
                 // Between frames nothing of the machine's may be on the
                 // host's GPU alone: a savestate is its memory and no more.
-                if (g_screen.opengl && m.quiesce)
+                if (g_screen.gpu() && m.quiesce)
                     m.system.GPU().ChimeraQuiesce();
                 m.done.release();
             }
@@ -1299,14 +1354,15 @@ bool boot(const std::string &game, const Options &options, std::string &error) {
             // land on another GL context, where every name the renderer
             // remembers is nothing or something else. It is made again, and
             // fills its caches from the machine's memory.
-            if (g_screen.opengl && (chimera_gl_context_id() != g_screen.context_id || m.rebuild_every_frame)) {
+            if (g_screen.gpu() && (g_screen.current_context() != g_screen.context_id || m.rebuild_every_frame)) {
                 // the gate's rebuild before every frame stands for a state
                 // taken and loaded there: the core is told first, as the
                 // engine tells it before every state
                 if (m.rebuild_every_frame && m.keep_before_rebuild)
                     VideoCore::ChimeraKeepScaled(m.system);
                 kept_images::renderer_made_again();
-                VideoCore::ChimeraRebuildRenderer(m.system, m.window, rebuild_own_gl);
+                VideoCore::ChimeraRebuildRenderer(m.system, m.window,
+                                                  g_screen.vulkan ? rebuild_own_vulkan : rebuild_own_gl);
             }
             m.frame++;
             m.system.CoreTiming().ScheduleEvent(std::chrono::nanoseconds(frame_end_ns(m.frame)), m.frame_event, true);
@@ -1413,6 +1469,7 @@ const uint8_t *video(int &width, int &height) {
 
 void set_rendering(bool on) {
     g_screen.readback = on;
+    Vulkan::g_chimera_readback = on;
 }
 
 void state_saving() {

@@ -15,7 +15,7 @@
 namespace chimera_eden {
 
 struct Options {
-    // null: no picture; opengl: through the GPU bridge
+    // null: no picture; opengl, vulkan: through the GPU bridge of that name
     std::string renderer = "opengl";
     // The console's keys and its system software, as the frontend provides
     // them: paths natively, mounted files' names in the sandbox. prod.keys

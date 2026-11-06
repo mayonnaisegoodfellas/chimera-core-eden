@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "Hoe het beeld wordt getekend. De OpenGL-renderer van Eden tekent op de videokaart van uw computer. Het is de enige renderer, omdat de graphics van een Switch niet met een bruikbare snelheid in software te tekenen zijn. Een computer die geen OpenGL 4.6 kan bieden, kan deze core niet draaien. De videokaart ligt buiten de core en is op elke computer anders. Wat ze tekent, wordt aan het eind van elk frame terug in het geheugen van de console geschreven, zodat een savestate de beelden bevat.",
+		"setting.renderer.help": "Hoe het beeld wordt getekend. Beide keuzes zijn renderers van Eden zelf, en beide tekenen op de videokaart van je computer: opengl-hw met OpenGL 4.6, vulkan-hw met Vulkan. De graphics van een Switch zijn niet met bruikbare snelheid in software te tekenen, dus een computer die geen van beide kan bieden, kan deze core niet draaien. De videokaart staat buiten de core en is op elke computer anders. Met beide renderers wordt wat de videokaart tekent aan het eind van elk frame teruggeschreven in het geheugen van de console, zodat een savestate de beelden bevat. De twee renderers schrijven niet dezelfde bytes terug, en een spel kan ze lezen, dus een film moet worden afgespeeld met de renderer waarmee hij is gemaakt. Voorlopig tekent vulkan-hw alleen met Interne resolutie 1x.",
 		"setting.console_mode": "Consolemodus",
 		"setting.console_mode.help": "Of de console in de hand wordt gehouden of in zijn dock staat. Games vragen welke van de twee, en veel tekenen op 1280x720 in de hand en op 1920x1080 in het dock, met andere details die daarbij passen. In het dock is het beeld 1920x1080. Het hoort bij de console, dus een opname heeft dezelfde waarde nodig.",
 		"setting.resolution": "Interne resolutie",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Een bestand kon niet worden gelezen of geschreven. Is de schijf vol?",
 		"error.tool.not_zstd": "%1 in het bestand pakt niet uit: het bestand is beschadigd.",
 		"error.tool.cut_short": "%1 in het bestand houdt te vroeg op: het bestand is beschadigd.",
-		"error.solid_nsz": "%1 is als één stroom gecomprimeerd (een solide NSZ), die Eden niet kan lezen terwijl een spel speelt. Maak er met Extra > Hulpmiddelen per core > Eden > NSZ uitpakken... een .nsp van en gebruik die."
+		"error.solid_nsz": "%1 is als één stroom gecomprimeerd (een solide NSZ), die Eden niet kan lezen terwijl een spel speelt. Maak er met Extra > Hulpmiddelen per core > Eden > NSZ uitpakken... een .nsp van en gebruik die.",
+		"error.no_vk_bridge": "Eden tekent met Vulkan op de videokaart, en Chimera heeft geen Vulkan-apparaat doorgegeven. De instelling van de renderer is vulkan-hw, en deze computer heeft misschien geen Vulkan te bieden. De renderer opengl-hw werkt misschien wel.",
+		"error.vulkan_not_started": "De renderer is niet gestart: Eden kon Vulkan niet gebruiken op de videokaart van deze computer. De renderer opengl-hw werkt misschien wel.",
+		"error.vulkan_1x_only": "De renderer vulkan-hw tekent alleen op de eigen resolutie van de console, dus Interne resolutie moet 1x zijn. Kies 1x, of de renderer opengl-hw voor een groter beeld."
 	}
 }

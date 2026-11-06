@@ -26,7 +26,7 @@
  * Without it the controls rest. --audio-out writes the sound, S16 stereo at
  * 48 kHz. --firmware mounts a file under a firmware id, as the frontend
  * does. --turbo turns rendering off for frames A..B-1. --renderer is
- * opengl-hw (the default) or null. --content puts an update or DLC .nsp in
+ * opengl-hw (the default), vulkan-hw or null. --content puts an update or DLC .nsp in
  * the project's "content" slot (any number, in order), --mod a mod (a
  * .pchtxt, .ips or .zip) in its "mods" slot. --resolution is the
  * internal resolution setting (1x, the default, 1.5x, 2x or 3x).

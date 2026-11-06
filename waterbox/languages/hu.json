@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderelő",
-		"setting.renderer.help": "Hogyan rajzolódik a kép. Az Eden emulátor OpenGL renderelője a számítógép videokártyáján rajzol. Ez az egyetlen renderelő, mert a Switch konzol grafikáját szoftveresen nem lehet használható sebességgel megrajzolni. Az a számítógép, amely nem tud OpenGL 4.6 szintet nyújtani, nem tudja futtatni ezt a magot. A videokártya a magon kívül van, és minden számítógépen más. Amit megrajzol, az minden képkocka végén visszaíródik a konzol memóriájába, így egy állapotmentés tartalmazza a képeket.",
+		"setting.renderer.help": "Hogyan rajzolódik a kép. Mindkét lehetőség az Eden emulátor saját megjelenítője, és mindkettő a számítógéped videokártyáján rajzol: az opengl-hw OpenGL 4.6 segítségével, a vulkan-hw Vulkan segítségével. Egy Switch konzol grafikája szoftveresen nem rajzolható használható sebességgel, így az a számítógép, amely egyiket sem tudja nyújtani, nem tudja futtatni ezt a magot. A videokártya a magon kívül van, és minden számítógépen más. Bármelyik megjelenítővel minden képkocka végén visszaíródik a konzol memóriájába, amit a videokártya rajzolt, így egy mentett állapot tartalmazza a képeket. A két megjelenítő nem ugyanazokat a bájtokat írja vissza, és egy játék olvashatja őket, ezért egy filmet azzal a megjelenítővel kell lejátszani, amellyel készült. Egyelőre a vulkan-hw csak Belső felbontás 1x mellett rajzol.",
 		"setting.console_mode": "Konzol módja",
 		"setting.console_mode.help": "Kézben tartják-e a konzolt, vagy a dokkolójában áll. A játékok rákérdeznek, és sokan kézben 1280x720, dokkolva 1920x1080 felbontásban rajzolnak, a többi részletet is ehhez igazítva. Dokkolva a kép 1920x1080. A konzol része, ezért egy felvételnek ugyanaz az érték kell.",
 		"setting.resolution": "Belső felbontás",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "Egy fájlt nem sikerült olvasni vagy írni. Megtelt a lemez?",
 		"error.tool.not_zstd": "A fájlban lévő %1 nem bontható ki: a fájl sérült.",
 		"error.tool.cut_short": "A fájlban lévő %1 túl korán véget ér: a fájl sérült.",
-		"error.solid_nsz": "A(z) %1 egyetlen folyamként van tömörítve (tömör NSZ), amelyet az Eden játék közben nem tud olvasni. Készítsen belőle .nsp-t ezzel: Eszközök > Magonkénti eszközök > Eden > NSZ kibontása..., és azt használja."
+		"error.solid_nsz": "A(z) %1 egyetlen folyamként van tömörítve (tömör NSZ), amelyet az Eden játék közben nem tud olvasni. Készítsen belőle .nsp-t ezzel: Eszközök > Magonkénti eszközök > Eden > NSZ kibontása..., és azt használja.",
+		"error.no_vk_bridge": "Az Eden emulátor Vulkan segítségével rajzol a videokártyán, és a Chimera program nem adott át Vulkan eszközt. A megjelenítő beállítása vulkan-hw, és ennek a számítógépnek talán nincs átadható Vulkan felülete. Helyette az opengl-hw megjelenítő működhet.",
+		"error.vulkan_not_started": "A megjelenítő nem indult el: az Eden emulátor nem tudta használni a Vulkan felületet ennek a számítógépnek a videokártyáján. Helyette az opengl-hw megjelenítő működhet.",
+		"error.vulkan_1x_only": "A vulkan-hw megjelenítő csak a konzol saját felbontásán rajzol, ezért a Belső felbontás értéke 1x kell legyen. Válaszd az 1x értéket, vagy nagyobb képhez az opengl-hw megjelenítőt."
 	}
 }

@@ -1,7 +1,7 @@
 {
 	"texts": {
 		"setting.renderer": "Renderer",
-		"setting.renderer.help": "How the picture is drawn. Eden's OpenGL renderer draws on your computer's graphics card. It is the only renderer, because a Switch's graphics cannot be drawn in software at a useful speed. A computer that cannot provide OpenGL 4.6 cannot run this core. The graphics card is outside the core and is different on every computer. What it draws is written back into the console's memory at the end of each frame, so a savestate contains the pictures.",
+		"setting.renderer.help": "How the picture is drawn. Both choices are Eden's own renderers, and both draw on your computer's graphics card: opengl-hw with OpenGL 4.6, vulkan-hw with Vulkan. A Switch's graphics cannot be drawn in software at a useful speed, so a computer that can provide neither cannot run this core. The graphics card is outside the core and is different on every computer. With either renderer, what the graphics card draws is written back into the console's memory at the end of each frame, so a savestate contains the pictures. The two renderers do not write the same bytes back, and a game can read them, so a movie must be played with the renderer it was made with. For now vulkan-hw draws at Internal Resolution 1x only.",
 		"setting.console_mode": "Console Mode",
 		"setting.console_mode.help": "Whether the console is held in the hand or sits in its dock. Games ask which, and many draw at 1280x720 in the hand and at 1920x1080 docked, with other details to match. When docked, the picture is 1920x1080. It is part of the console, so a movie needs the same value.",
 		"setting.resolution": "Internal Resolution",
@@ -74,6 +74,9 @@
 		"error.tool.read_write": "A file could not be read or written. Is the disk full?",
 		"error.tool.not_zstd": "%1 inside the file does not decompress: the file is damaged.",
 		"error.tool.cut_short": "%1 inside the file ends too soon: the file is damaged.",
-		"error.solid_nsz": "%1 is compressed as one stream (a solid NSZ), which Eden cannot read while a game plays. Make an .nsp of it with Tools > Core-Specific Tools > Eden > Decompress NSZ..., and use that."
+		"error.solid_nsz": "%1 is compressed as one stream (a solid NSZ), which Eden cannot read while a game plays. Make an .nsp of it with Tools > Core-Specific Tools > Eden > Decompress NSZ..., and use that.",
+		"error.no_vk_bridge": "Eden draws with Vulkan on the graphics card, and Chimera handed over no Vulkan device. The renderer setting is vulkan-hw, and this computer may have no Vulkan to give. The opengl-hw renderer may work instead.",
+		"error.vulkan_not_started": "The renderer did not start: Eden could not use Vulkan on this computer's graphics card. The opengl-hw renderer may work instead.",
+		"error.vulkan_1x_only": "The vulkan-hw renderer draws at the console's own resolution only, so Internal Resolution must be 1x. Choose 1x, or the opengl-hw renderer for a larger picture."
 	}
 }

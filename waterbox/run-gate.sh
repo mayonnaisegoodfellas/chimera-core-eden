@@ -509,6 +509,63 @@ else
 	fail "docked at 2x (exit $r) the picture is $size, not 3840x2160"
 fi
 
+# 8c. Vulkan (vulkan-hw): Eden's Vulkan renderer through the Vulkan bridge,
+# both halves here as in Chimera (patch 0016). Its pictures are OpenGL's, frame
+# for frame (what each writes back into the console's memory differs, so the
+# memory digest is left out of that one comparison); a renderer made again
+# before every frame draws the run of one left alone, memory included, and
+# that comparison can fail (without the frame-end write-back it does); a
+# state saved and loaded before every frame in the sandbox changes nothing;
+# above 1x it refuses, by name. Without Vulkan on this computer: SKIP.
+rv=$(native n-vk $N --input "$script" --ram-every 50 --renderer vulkan-hw)
+if [ "$rv" = 5 ]; then
+	skip "Vulkan: this computer gives no Vulkan device ($(grep -m1 'vulkan bridge' "$work/n-vk.err" | cut -c1-100))"
+else
+	frames_of n-vk
+	sed 's/ ram=.*//' "$work/n-vk.frames" > "$work/n-vk.noram"
+	if [ "$rv" != 0 ]; then
+		fail "Vulkan: the run failed (exit $rv; build/gate/n-vk.err)"
+	elif ! cmp -s "$work/n-a.noram" "$work/n-vk.noram"; then
+		fail "Vulkan draws other pictures than OpenGL - $(first_diff n-a.noram n-vk.noram)"
+	else
+		pass "Vulkan: the same $N frames as OpenGL, $(pictures n-vk) pictures, the clock and the sound"
+	fi
+	r=$(native n-vk-rebuild $N --input "$script" --ram-every 50 --renderer vulkan-hw --rebuild-every-frame)
+	frames_of n-vk-rebuild
+	if [ "$r" != 0 ]; then
+		fail "Vulkan: the run that rebuilds its renderer failed (exit $r; build/gate/n-vk-rebuild.err)"
+	elif ! cmp -s "$work/n-vk.frames" "$work/n-vk-rebuild.frames"; then
+		fail "Vulkan: a renderer made again draws another run - $(first_diff n-vk.frames n-vk-rebuild.frames)"
+	else
+		pass "Vulkan: a renderer made again before every frame, the same $N frames, memory included"
+	fi
+	r=$(native n-vk-lossy 120 --input "$script" --renderer vulkan-hw --rebuild-every-frame --fast-states)
+	head -120 "$work/n-vk.noram" > "$work/n-vk.120"
+	grep '^frame ' "$work/n-vk-lossy.out" > "$work/n-vk-lossy.frames"
+	if [ "$r" = 0 ] && ! cmp -s "$work/n-vk.120" "$work/n-vk-lossy.frames"; then
+		pass "Vulkan negative control: without the frame-end write-back a rebuilt renderer draws wrong ($(diff "$work/n-vk.120" "$work/n-vk-lossy.frames" | grep -c '^>') of 120 frames differ)"
+	else
+		fail "Vulkan negative control: the rebuild comparison passed with the write-back off (exit $r) - it proves nothing"
+	fi
+	r=$(sandboxed w-vk-plain $S --input "$script" --ram-every 40 --renderer vulkan-hw)
+	frames_of w-vk-plain
+	r2=$(sandboxed w-vk-rerecord $S --input "$script" --ram-every 40 --renderer vulkan-hw --rerecord)
+	frames_of w-vk-rerecord
+	if [ "$r" != 0 ] || [ "$r2" != 0 ]; then
+		fail "Vulkan: a state run failed (exit $r, $r2; build/gate/w-vk-rerecord.err)"
+	elif ! cmp -s "$work/w-vk-plain.frames" "$work/w-vk-rerecord.frames"; then
+		fail "Vulkan: a state saved and loaded before every frame changes the run - $(first_diff w-vk-plain.frames w-vk-rerecord.frames)"
+	else
+		pass "Vulkan: a state saved and loaded before every frame in the sandbox, the same $S frames, memory included"
+	fi
+	r=$(native n-vk-2x 2 --renderer vulkan-hw --resolution 2x)
+	if [ "$r" != 0 ] && grep -q 'error.vulkan_1x_only' "$work/n-vk-2x.out" "$work/n-vk-2x.err"; then
+		pass "Vulkan above 1x is refused, by name (error.vulkan_1x_only)"
+	else
+		fail "Vulkan at 2x was not refused by name (exit $r; build/gate/n-vk-2x.err)"
+	fi
+fi
+
 # 9. the package through Chimera's own engine, headless
 if [ -x "$engine" ] && [ -f "$pkg" ]; then
 	python3 "$here/tests/make-movie.py" "$script" 330 "$work/engine.movie"
