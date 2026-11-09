@@ -518,9 +518,11 @@ fi
 # state saved and loaded before every frame in the sandbox changes nothing;
 # above 1x it refuses, by name. Without Vulkan on this computer: SKIP.
 rv=$(native n-vk $N --input "$script" --ram-every 50 --renderer vulkan-hw)
+have_vk=0
 if [ "$rv" = 5 ]; then
 	skip "Vulkan: this computer gives no Vulkan device ($(grep -m1 'vulkan bridge' "$work/n-vk.err" | cut -c1-100))"
 else
+	have_vk=1
 	frames_of n-vk
 	sed 's/ ram=.*//' "$work/n-vk.frames" > "$work/n-vk.noram"
 	if [ "$rv" != 0 ]; then
@@ -878,12 +880,18 @@ fi
 # at frame 1700 the title screen is shown. Only OpenGL on a graphics card
 # shows it (with Mesa's software OpenGL the cache drops its images every
 # frame); this test runs with EDEN_GL_DRIVER, a Mesa driver for the card,
-# and on WSL with d3d12. Without one, or without the game: SKIP.
-gl_driver="${EDEN_GL_DRIVER:-}"
-if [ -z "$gl_driver" ] && [ -e /usr/lib/wsl/lib/libd3d12.so ]; then gl_driver=d3d12; fi
+# on WSL with d3d12, and on a card's own OpenGL. Without one, or without the
+# game: SKIP.
+gallium="${EDEN_GL_DRIVER:-}"
+if [ -z "$gallium" ] && [ -e /usr/lib/wsl/lib/libd3d12.so ]; then gallium=d3d12; fi
+gl_driver="$gallium"
+# (a card's own OpenGL, as the sandboxed runs above found it, will do too)
+if [ -z "$gl_driver" ]; then
+	gl_driver=$(sed -n 's/^gpu bridge: .* on //p' "$work/w-a.err" 2>/dev/null | head -1 | grep -v -i -E 'llvmpipe|softpipe|swrast')
+fi
 cmod="$(ls "$games/cpu-copied-picture"/*.pchtxt 2>/dev/null | head -1)"
 if [ -n "$(game_in cpu-copied-picture)" ] && [ -n "$cmod" ] && [ -n "$gl_driver" ]; then
-	r=$(export GALLIUM_DRIVER="$gl_driver"; sandboxed_game cpu-copied-picture 1701 --timeout 3600 --mod "$cmod" \
+	r=$([ -n "$gallium" ] && export GALLIUM_DRIVER="$gallium"; sandboxed_game cpu-copied-picture 1701 --timeout 3600 --mod "$cmod" \
 		--screenshot "1700=$work/cpu-copied-picture-1700.tga")
 	lit=$(python3 "$here/tests/lit-pixels.py" "$work/cpu-copied-picture-1700.tga" 2>/dev/null || echo 0)
 	if [ "$r" = 0 ] && [ "$lit" -gt 500000 ]; then
@@ -892,7 +900,125 @@ if [ -n "$(game_in cpu-copied-picture)" ] && [ -n "$cmod" ] && [ -n "$gl_driver"
 		fail "cpu-copied-picture (exit $r): on the card's OpenGL ($gl_driver), the picture at frame 1700 has $lit pixels that are not black (more than 500000 expected, the title screen); see build/gate/cpu-copied-picture.err"
 	fi
 else
-	skip "cpu-copied-picture: needs a game and a .pchtxt in ${games#$root/}/cpu-copied-picture, and OpenGL on a graphics card (EDEN_GL_DRIVER, or WSL's d3d12)"
+	skip "cpu-copied-picture: needs a game and a .pchtxt in ${games#$root/}/cpu-copied-picture, and OpenGL on a graphics card (EDEN_GL_DRIVER, WSL's d3d12, or the card's own)"
+fi
+
+# 10i. A bare .pchtxt in a project's mods slot, through chimera-run, in the
+# layout such patches are shared in: comment lines with '#' and '//', '@flag
+# print_values', a value with a comment after it, a disabled block that would
+# undo the enabled one, and an enabled block after '@stop' that would break
+# the program. Its patch makes the program's main function loop for ever
+# (the lower-left-origin game, as 10g): the core log says it was applied, two
+# runs draw the same frame 999, and without the patch the game shows its
+# licence agreement there instead.
+if [ -n "$(game_in lower-left-origin)" ] && [ -x "$engine" ] && [ -f "$pkg" ]; then
+	pw="$work/pchtxt"; rm -rf "$pw"; mkdir -p "$pw"
+	cat > "$pw/1.0.0.pchtxt" <<'EOF'
+@nsobid-27DBB05C913571B50CDC2315E0103F8AC88688C1
+
+# TOMB RAIDER I-III REMASTERED [010024601BB16000] - v1.0.0
+
+@flag print_values
+@flag offset_shift 0x100
+
+// nnMain
+
+@enabled
+000050B0 00000014 // b .
+@disabled
+000050B0 1F2003D5 // nop
+@stop
+
+@enabled
+000050B0 00000000
+EOF
+	g="$(game_in lower-left-origin)"
+	python3 "$here/tests/make-movie.py" /dev/null 1000 "$pw/none.movie"
+	set -- --firmware "prod.keys=$content/prod.keys"
+	[ -f "$content/title.keys" ] && set -- "$@" --firmware "title.keys=$content/title.keys"
+	[ "$have_fw" = 1 ] && set -- "$@" --firmware "firmware.zip=$firmware"
+	for v in patched again plain; do
+		mod=""; [ $v != plain ] && mod="--file mods=$pw/1.0.0.pchtxt"
+		"$engine" --new-project "$pw/$v.chimeraProject" "$pkg" "$g" "$pw/none.movie" $mod "$@" > "$pw/$v.new.log" 2>&1
+		"$engine" --project "$pw/$v.chimeraProject" "$pkg" --files "$(dirname "$g")" --files "$pw" --gpu "$@" --frames 1000 \
+			--core-log "$pw/$v.log" --screenshot "999=$pw/$v-999.tga" > "$pw/$v.out" 2>&1
+		echo $? > "$pw/$v.exit"
+	done
+	applied=$(grep -c 'Applying IPSwitch patch from mod' "$pw/patched.log" 2>/dev/null)
+	lit_patched=$(python3 "$here/tests/lit-pixels.py" "$pw/patched-999.tga" 2>/dev/null || echo -1)
+	lit_plain=$(python3 "$here/tests/lit-pixels.py" "$pw/plain-999.tga" 2>/dev/null || echo -1)
+	if [ "$(cat "$pw"/*.exit | tr -d '\n')" != 000 ]; then
+		fail "pchtxt: a run failed (exits $(cat "$pw"/*.exit | tr '\n' ' '); build/gate/pchtxt/*.out)"
+	elif [ "${applied:-0}" -lt 1 ] || grep -q 'Unknown flag\|Invalid line' "$pw/patched.log"; then
+		fail "pchtxt: the core log does not say the patch was applied, or Eden misread a line ($(grep -m1 'Unknown flag\|Invalid line' "$pw/patched.log"))"
+	elif [ ! -s "$pw/patched-999.tga" ] || ! cmp -s "$pw/patched-999.tga" "$pw/again-999.tga"; then
+		fail "pchtxt: two runs with the patch drew different pictures at frame 999"
+	elif cmp -s "$pw/patched-999.tga" "$pw/plain-999.tga"; then
+		fail "pchtxt: frame 999 is the same picture with the patch and without it"
+	else
+		pass "pchtxt: a bare .pchtxt in the mods slot is applied (the core log says so) and stops the program at its start: frame 999 the same in two runs ($lit_patched pixels lit), where without it the game draws its licence agreement ($lit_plain lit)"
+	fi
+else
+	skip "pchtxt: no game in ${games#$root/}/lower-left-origin, or no chimera-run or package"
+fi
+
+# 10j. The 60 frames a second patch of 10h through chimera-run, in the
+# project's mods slot as a person adds it: the title screen at frame 1700,
+# a new picture at every frame from 1700 to 1739 where the game without the
+# patch draws one every other frame, the same pictures in two runs, and the
+# same with Vulkan when there is a Vulkan device.
+if [ -n "$(game_in cpu-copied-picture)" ] && [ -n "$cmod" ] && [ -n "$gl_driver" ] && [ -x "$engine" ] && [ -f "$pkg" ]; then
+	fw60="$work/sixty"; rm -rf "$fw60"; mkdir -p "$fw60"
+	g="$(game_in cpu-copied-picture)"
+	python3 "$here/tests/make-movie.py" /dev/null 1740 "$fw60/none.movie"
+	set -- --firmware "prod.keys=$content/prod.keys"
+	[ -f "$content/title.keys" ] && set -- "$@" --firmware "title.keys=$content/title.keys"
+	[ "$have_fw" = 1 ] && set -- "$@" --firmware "firmware.zip=$firmware"
+	runs="patched:opengl-hw again:opengl-hw plain:opengl-hw"
+	[ "$have_vk" = 1 ] && runs="$runs vulkan:vulkan-hw"
+	for run in $runs; do
+		v=${run%%:*}; rend=${run#*:}
+		mod=""; [ $v != plain ] && mod="--file mods=$cmod"
+		shots=""; for f in $(seq 1700 1739); do shots="$shots --screenshot $f=$fw60/$v-$f.tga"; done
+		"$engine" --new-project "$fw60/$v.chimeraProject" "$pkg" "$g" "$fw60/none.movie" $mod --settings "{\"renderer\": \"$rend\"}" "$@" \
+			> "$fw60/$v.new.log" 2>&1
+		"$engine" --project "$fw60/$v.chimeraProject" "$pkg" --files "$(dirname "$g")" --gpu "$@" --frames 1740 $shots \
+			> "$fw60/$v.out" 2>&1
+		echo $? > "$fw60/$v.exit"
+	done
+	verdict=$(python3 - "$fw60" "$here/tests/lit-pixels.py" $runs <<'PYEOF'
+import hashlib, os, subprocess, sys
+d, lit_pixels = sys.argv[1], sys.argv[2]
+def pictures(v):
+    return [hashlib.sha1(open("%s/%s-%d.tga" % (d, v, f), "rb").read()).hexdigest() for f in range(1700, 1740)]
+out, ok = [], True
+seen = {}
+for run in sys.argv[3:]:
+    v = run.split(":")[0]
+    if open("%s/%s.exit" % (d, v)).read().strip() != "0" or not os.path.exists("%s/%s-1739.tga" % (d, v)):
+        print("the %s run failed" % v); sys.exit(1)
+    p = pictures(v)
+    seen[v] = p
+    changes = sum(1 for a, b in zip(p, p[1:]) if a != b)
+    lit = int(subprocess.run([sys.executable, lit_pixels, "%s/%s-1700.tga" % (d, v)],
+                             capture_output=True, text=True).stdout.strip() or 0)
+    out.append("%s %d changes, %d lit" % (v, changes, lit))
+    if lit < 500000 or (v == "plain") != (changes < 25):
+        ok = False
+if seen["patched"] != seen["again"]:
+    out.append("the two patched runs differ"); ok = False
+print("; ".join(out))
+sys.exit(0 if ok else 1)
+PYEOF
+)
+	if [ $? = 0 ]; then
+		pass "60 fps patch through chimera-run: $verdict (frames 1700-1739)"
+	else
+		fail "60 fps patch through chimera-run: $verdict (build/gate/sixty)"
+	fi
+	rm -f "$fw60"/*.tga
+else
+	skip "60 fps patch through chimera-run: needs what 10h needs, chimera-run and the package"
 fi
 
 echo "$fails failed"

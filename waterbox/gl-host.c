@@ -195,9 +195,15 @@ static int create_context(char *err, int errlen)
 	}
 
 	/* A CORE profile, asked for explicitly (a loader may otherwise treat
-	 * every legacy compatibility entry point as required): 4.5 first, 3.3
-	 * as the floor. */
+	 * every legacy compatibility entry point as required): 4.6 first (a
+	 * driver may give exactly the version asked for), then 4.5, 3.3 as the
+	 * floor. */
 	{
+		static const EGLint core46[] = {
+			EGL_CONTEXT_MAJOR_VERSION, 4, EGL_CONTEXT_MINOR_VERSION, 6,
+			EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+			EGL_NONE
+		};
 		static const EGLint core45[] = {
 			EGL_CONTEXT_MAJOR_VERSION, 4, EGL_CONTEXT_MINOR_VERSION, 5,
 			EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
@@ -208,7 +214,9 @@ static int create_context(char *err, int errlen)
 			EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
 			EGL_NONE
 		};
-		s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, core45);
+		s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, core46);
+		if (s_context == EGL_NO_CONTEXT)
+			s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, core45);
 		if (s_context == EGL_NO_CONTEXT)
 			s_context = eglCreateContext(s_display, config, EGL_NO_CONTEXT, core33);
 	}
