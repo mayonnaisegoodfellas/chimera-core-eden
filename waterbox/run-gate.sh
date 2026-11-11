@@ -560,6 +560,27 @@ else
 	else
 		pass "Vulkan: a state saved and loaded before every frame in the sandbox, the same $S frames, memory included"
 	fi
+	r=$(sandboxed w-vk $N --input "$script" --ram-every 50 --renderer vulkan-hw)
+	if [ "$r" != 0 ]; then
+		fail "Vulkan: the sandboxed run failed (exit $r; build/gate/w-vk.err)"
+	elif harness_lines n-vk; harness_lines w-vk; ! cmp -s "$work/n-vk.lines" "$work/w-vk.lines"; then
+		fail "Vulkan: native and sandbox differ - $(first_diff n-vk.lines w-vk.lines)"
+	else
+		pass "Vulkan: native == sandbox in all $N frames (clock, CPU ticks, picture, sound, memory)"
+	fi
+	r=$(sandboxed w-vk-first $SPLIT --input "$script" --renderer vulkan-hw --save-state "$work/gate-vk.state")
+	r2=$(sandboxed w-vk-second $((S - SPLIT)) --input "$script" --ram-every 40 --renderer vulkan-hw --state "$work/gate-vk.state")
+	frames_of w-vk-second
+	awk -v s="$SPLIT" '$2 > s' "$work/w-vk-plain.frames" > "$work/w-vk-plain.tail"
+	size=$(wc -c < "$work/gate-vk.state" 2>/dev/null || echo 0)
+	rm -f "$work/gate-vk.state"
+	if [ "$r" != 0 ] || [ "$r2" != 0 ]; then
+		fail "Vulkan: the state did not cross processes (exit $r, $r2; build/gate/w-vk-second.err)"
+	elif ! cmp -s "$work/w-vk-plain.tail" "$work/w-vk-second.frames"; then
+		fail "Vulkan: a state loaded in another process runs on differently - $(first_diff w-vk-plain.tail w-vk-second.frames)"
+	else
+		pass "Vulkan: a state saved at frame $SPLIT ($((size / 1048576)) MiB) and loaded by another process: the next $((S - SPLIT)) frames the same, memory included"
+	fi
 	r=$(native n-vk-2x 2 --renderer vulkan-hw --resolution 2x)
 	if [ "$r" != 0 ] && grep -q 'error.vulkan_1x_only' "$work/n-vk-2x.out" "$work/n-vk-2x.err"; then
 		pass "Vulkan above 1x is refused, by name (error.vulkan_1x_only)"
