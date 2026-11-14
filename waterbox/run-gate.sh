@@ -669,6 +669,53 @@ else
 	skip "a project in chimera-run: no $engine or no build/package/eden.chimeraCore"
 fi
 
+# 9c. A project's greenzone kept by one process and used by the next, as
+# when a project is closed and opened again (greenzoneSurvivesReload). The
+# second run plays one frame and seeks to frame 360, which only the kept
+# states reach without replaying; its picture there is the straight run's.
+# Control: the history of a run with no input, used the same way, gives
+# another picture.
+if [ -x "$engine" ] && [ -f "$pkg" ] && grep -q '"greenzoneSurvivesReload": true' "$here/waterbox.config"; then
+	gz="$work/greenzone"; rm -rf "$gz"; mkdir -p "$gz"
+	python3 "$here/tests/make-movie.py" "$script" 400 "$gz/press.movie"
+	python3 "$here/tests/make-movie.py" /dev/null 400 "$gz/idle.movie"
+	set -- --firmware "prod.keys=$content/prod.keys"
+	[ -f "$content/title.keys" ] && set -- "$@" --firmware "title.keys=$content/title.keys"
+	[ "$have_fw" = 1 ] && set -- "$@" --firmware "firmware.zip=$firmware"
+	for r in opengl-hw vulkan-hw; do
+		if [ $r = vulkan-hw ] && [ "$have_vk" != 1 ]; then
+			skip "greenzone across processes ($r): this computer gives no Vulkan device"
+			continue
+		fi
+		s="{\"renderer\": \"$r\"}"
+		crun_game "$pkg" "$game" "$gz/press.movie" --settings "$s" --gpu "$@" --frames 400 --greenzone-period 10 \
+			--history-out "$gz/$r-press.hist" --screenshot "359=$gz/$r-straight.tga" >"$gz/$r-press.out" 2>&1
+		r1=$?
+		crun_game "$pkg" "$game" "$gz/idle.movie" --settings "$s" --gpu "$@" --frames 400 --greenzone-period 10 \
+			--history-out "$gz/$r-idle.hist" >"$gz/$r-idle.out" 2>&1
+		r2=$?
+		crun_game "$pkg" "$game" "$gz/press.movie" --settings "$s" --gpu "$@" --frames 400 --history-in "$gz/$r-press.hist" \
+			--play 1 --seek 360 --stop-at-seek --final-screenshot "$gz/$r-kept.tga" >"$gz/$r-kept.out" 2>&1
+		r3=$?
+		crun_game "$pkg" "$game" "$gz/press.movie" --settings "$s" --gpu "$@" --frames 400 --history-in "$gz/$r-idle.hist" \
+			--play 1 --seek 360 --stop-at-seek --final-screenshot "$gz/$r-other.tga" >"$gz/$r-other.out" 2>&1
+		r4=$?
+		hist=$(wc -c < "$gz/$r-press.hist" 2>/dev/null || echo 0)
+		if [ "$r1$r2$r3$r4" != 0000 ]; then
+			fail "greenzone across processes ($r): a run failed (exits $r1 $r2 $r3 $r4; build/gate/greenzone/$r-*.out)"
+		elif ! cmp -s "$gz/$r-straight.tga" "$gz/$r-kept.tga"; then
+			fail "greenzone across processes ($r): frame 360 sought into a kept history is not the straight run's picture"
+		elif cmp -s "$gz/$r-straight.tga" "$gz/$r-other.tga"; then
+			fail "control: a history kept from a run with no input gives frame 360 the straight run's picture - the seek did not use the kept states"
+		else
+			pass "greenzone across processes ($r): a history of $((hist / 1048576)) MiB kept by one process, sought into by another: frame 360 is the straight run's picture; another run's history gives another"
+		fi
+	done
+	rm -f "$gz"/*.hist
+else
+	skip "greenzone across processes: no $engine, no package, or the package does not declare greenzoneSurvivesReload"
+fi
+
 # 10. Games that once failed, each in a folder of its own under
 # build/test-games (or EDEN_TEST_GAMES), run in the sandbox with the keys and
 # system software above. A test whose folder holds no game SKIPs.

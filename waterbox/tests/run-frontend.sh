@@ -9,6 +9,11 @@
 #                     draws at that frame of the same project, pixel for pixel
 #   keybinds          the bindings the package ships are the machine's when
 #                     nobody changed them
+#   greenzone:reopen  the project opened again in a new window has the
+#                     greenzone the last one kept when it closed, and the
+#                     picture at the frame is still chimera-run's; with a
+#                     copy of the package that does not declare
+#                     greenzoneSurvivesReload, it opens with none
 #
 # It needs what the test script's game tests need, in build/content (or
 # EDEN_CONTENT): one .nsp or .xci, prod.keys, and title.keys and a
@@ -69,6 +74,7 @@ firmware="$(ls "$content"/Firmware*.zip "$content"/firmware*.zip 2>/dev/null | h
 if [ -z "$game" ] || [ ! -f "$content/prod.keys" ]; then
 	report "project:frontend" SKIP "no .nsp/.xci or no prod.keys in $content"
 	report "keybinds" SKIP "needs a game to open"
+	report "greenzone:reopen" SKIP "needs a game to open"
 	finish
 fi
 
@@ -118,6 +124,7 @@ if ! python3 "$here/make-project.py" "$package" "$project" "$here/press-a.txt" "
 	"game=$work/$(basename "$game")" > "$work/make.log" 2>&1; then
 	report "project:frontend" FAIL "the project was not made: $(tail -1 "$work/make.log")"
 	report "keybinds" SKIP "needs the project"
+	report "greenzone:reopen" SKIP "needs the project"
 	finish
 fi
 
@@ -154,6 +161,46 @@ elif out="$(python3 -I "$here/check-keybinds.py" "$work/keys.controls.json" "$wb
 	report "keybinds" PASS "$out"
 else
 	report "keybinds" FAIL "$out"
+fi
+
+# --- 3. the greenzone kept at close is there at the next open -----------------
+# (the windows of tests 1 and 2 kept it when they closed). The control: the
+# same with a copy of the package that does not declare greenzoneSurvivesReload.
+reopen() { # <tag> <project> <lua>
+	printf 'frames=%s\nshot=%s/%s.png\nmeta=%s/%s.meta.txt\n' "$frames" "$work" "$1" "$work" "$1" > "$work/job.$1.txt"
+	( cd "$work" && MINIHAWK_JOB="$work/job.$1.txt" timeout 1800 "$chimera_exe" --headless \
+		"--config=$work/settings.json" "--project=$2" "--lua=$here/$3" ) > "$work/$1.log" 2>&1
+}
+meta() { sed -n "s/^$2=//p" "$work/$1.meta.txt" 2>/dev/null; }
+reopen reopened "$project" greenzone-reopen.lua
+mkdir -p "$work/cores-undeclared"
+python3 -I - "$package" "$work/cores-undeclared/eden.chimeraCore" <<'EOF'
+import json, sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as zin, zipfile.ZipFile(sys.argv[2], "w", zipfile.ZIP_DEFLATED) as zout:
+    for info in zin.infolist():
+        data = zin.read(info.filename)
+        if info.filename == "waterbox.config":
+            cfg = json.loads(data)
+            cfg["video"]["greenzoneSurvivesReload"] = False
+            data = json.dumps(cfg, indent=1).encode()
+        zout.writestr(info, data)
+EOF
+undeclared="$work/undeclared.chimeraProject"
+python3 "$here/make-project.py" "$work/cores-undeclared/eden.chimeraCore" "$undeclared" "$here/press-a.txt" "$frames" "${pin[@]}" \
+	"game=$work/$(basename "$game")" > "$work/make-undeclared.log" 2>&1
+CHIMERA_CORES_DIR="$work/cores-undeclared" reopen undeclared-first "$undeclared" tastudio-shot.lua
+CHIMERA_CORES_DIR="$work/cores-undeclared" reopen undeclared "$undeclared" greenzone-reopen.lua
+states="$(meta reopened states)"; green="$(meta reopened greenEnd)"
+if [ "$(meta reopened status)" != OK ]; then
+	report "greenzone:reopen" FAIL "the window did not report OK on the second open (see build/frontend/reopened.log)"
+elif [ "${states:-0}" -le 1 ] || [ "${green:-0}" -lt "$frames" ]; then
+	report "greenzone:reopen" FAIL "opened again, the greenzone holds ${states:-no} states and is green to frame ${green:-none}, not to $frames"
+elif ! same="$(python3 -I "$here/same-picture.py" "$work/engine.tga" "$work/reopened.png" 2>&1)"; then
+	report "greenzone:reopen" FAIL "opened again, the picture at frame $frames is not chimera-run's: $same"
+elif [ "$(meta undeclared status)" != OK ] || [ "$(meta undeclared states)" != 0 ]; then
+	report "greenzone:reopen" FAIL "control: without the declaration the project opened again with $(meta undeclared states) states (status $(meta undeclared status)) - the test proves nothing"
+else
+	report "greenzone:reopen" PASS "opened again: $states states, green to frame $green, at frame $frames in $(meta reopened seconds) s, chimera-run's picture; without the declaration 0 states, $(meta undeclared seconds) s"
 fi
 
 finish
